@@ -3,6 +3,7 @@ import './App.css';
 import { pdfToImages } from './utils/pdf';
 import { generatePptx } from './services/ppt';
 import { chatWithOpenAI, analyzeImageWithOpenAI } from './services/openaiClient';
+import { getOpenAIKey } from './config/env';
 
 /**
  * App component
@@ -32,7 +33,7 @@ function App() {
   const [pptReady, setPptReady] = useState(false);
   const lastBuildSlidesRef = useRef([]);
 
-  const apiKeyAvailable = !!process.env.REACT_APP_OPENAI_API_KEY;
+  const apiKeyAvailable = !!getOpenAIKey();
 
   useEffect(() => {
     document.title = 'PDF to PPT Converter';
@@ -67,8 +68,8 @@ function App() {
 
   const handleAnalyze = useCallback(async () => {
     if (!pdfFile) return;
-    if (!process.env.REACT_APP_OPENAI_API_KEY) {
-      alert('Missing OpenAI API key. Please set REACT_APP_OPENAI_API_KEY in .env.');
+    if (!getOpenAIKey()) {
+      alert('Missing OpenAI API key. Please set REACT_APP_OPENAI_API_KEY in .env or public/runtime-env.js and restart.');
       return;
     }
 
@@ -139,8 +140,8 @@ function App() {
   const sendMessage = async (e) => {
     e?.preventDefault?.();
     if (!userMessage.trim()) return;
-    if (!process.env.REACT_APP_OPENAI_API_KEY) {
-      alert('Missing OpenAI API key. Please set REACT_APP_OPENAI_API_KEY in .env.');
+    if (!getOpenAIKey()) {
+      alert('Missing OpenAI API key. Please set REACT_APP_OPENAI_API_KEY in .env or public/runtime-env.js and restart.');
       return;
     }
 

@@ -13,12 +13,19 @@ No backend or authentication. Use a restricted client-side API key for demos onl
 1) Install deps
 - npm install
 
-2) Configure environment
-- Copy .env.example to .env and set REACT_APP_OPENAI_API_KEY
+2) Configure environment (choose one)
+- Option A (build-time, requires rebuild): Copy .env.example to .env in pdf_to_ppt_frontend and set:
+  REACT_APP_OPENAI_API_KEY=your_key
+- Option B (runtime, no rebuild): Copy public/runtime-env.example.js to public/runtime-env.js and set:
+  window.__RUNTIME_CONFIG__ = { REACT_APP_OPENAI_API_KEY: "your_key" }
 
 3) Run
 - npm start
 - Open http://localhost:3000
+
+If the app shows a warning that the OpenAI key is missing, ensure:
+- The .env file is located at pdf_to_ppt_frontend/.env (not the monorepo root), and you restarted the dev server after editing; or
+- The runtime file exists at pdf_to_ppt_frontend/public/runtime-env.js and sets window.__RUNTIME_CONFIG__.REACT_APP_OPENAI_API_KEY.
 
 ## Notes
 

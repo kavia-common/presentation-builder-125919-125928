@@ -3,7 +3,8 @@
  * Uses fetch() to call Chat Completions API.
  */
 
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+import { getOpenAIKey } from "../config/env";
+
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 
 // PUBLIC_INTERFACE
@@ -14,7 +15,7 @@ const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
  * @returns {Promise<string>}
  */
 export async function chatWithOpenAI(messages) {
-  ensureApiKey();
+  const apiKey = ensureApiKey();
   const payload = {
     model: 'gpt-4o-mini',
     messages: messages.map(m => ({ role: m.role, content: m.content })),
@@ -23,7 +24,7 @@ export async function chatWithOpenAI(messages) {
   const res = await fetch(OPENAI_CHAT_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
@@ -49,7 +50,7 @@ export async function chatWithOpenAI(messages) {
  * @returns {Promise<{ include: boolean, title?: string, caption?: string, rationale?: string }>}
  */
 export async function analyzeImageWithOpenAI(imageDataUrl, userContext = '') {
-  ensureApiKey();
+  const apiKey = ensureApiKey();
 
   const systemPrompt = [
     'You are selecting which PDF page images are useful to include in a slide deck.',
@@ -79,7 +80,7 @@ export async function analyzeImageWithOpenAI(imageDataUrl, userContext = '') {
   const res = await fetch(OPENAI_CHAT_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
@@ -96,9 +97,11 @@ export async function analyzeImageWithOpenAI(imageDataUrl, userContext = '') {
 }
 
 function ensureApiKey() {
-  if (!OPENAI_API_KEY) {
+  const key = getOpenAIKey();
+  if (!key) {
     throw new Error('Missing REACT_APP_OPENAI_API_KEY');
   }
+  return key;
 }
 
 function safeParseJson(text) {
