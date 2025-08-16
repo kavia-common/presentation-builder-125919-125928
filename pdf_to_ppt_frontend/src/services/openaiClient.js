@@ -17,7 +17,7 @@ const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 export async function chatWithOpenAI(messages) {
   const apiKey = ensureApiKey();
   const payload = {
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     messages: messages.map(m => ({ role: m.role, content: m.content })),
     temperature: 0.3
   };
@@ -63,7 +63,7 @@ export async function analyzeImageWithOpenAI(imageDataUrl, userContext = '') {
   ].filter(Boolean).join('\n');
 
   const payload = {
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     temperature: 0.2,
     messages: [
       { role: 'system', content: systemPrompt },
@@ -140,7 +140,7 @@ export async function planSlidesWithOpenAI(pages, userGuidance = '') {
   ].filter(Boolean).join('\n');
 
   const payload = {
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     temperature: 0.3,
     messages: [
       { role: 'system', content: system },
@@ -200,7 +200,7 @@ export async function refineSlidesWithOpenAI(pages, existingOutline, userFeedbac
   ].join('\n');
 
   const payload = {
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     temperature: 0.3,
     messages: [
       { role: 'system', content: system },
