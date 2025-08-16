@@ -5,6 +5,7 @@ import { pdfToImages, pdfToText } from './utils/pdf';
 import { generatePptxFromOutline, generatePptx } from './services/ppt';
 import { chatWithOpenAI, analyzeImageWithOpenAI, planSlidesWithOpenAI, refineSlidesWithOpenAI, formatOutlineForChat } from './services/openaiClient';
 import { getOpenAIKey } from './config/env';
+import { listThemes } from './services/themes';
 
 /**
  * App component
@@ -15,6 +16,7 @@ import { getOpenAIKey } from './config/env';
  * - LLM-based slide planning (group/split pages logically)
  * - Chat UI with OpenAI with preloaded proposed slide content for review
  * - Local PPTX generation and download (from outline) with user feedback incorporated
+ * - Polished Mode + Theme: When enabled, nudge planning/refinement to use slide templates and selected theme; generation uses themed templates
  */
 function App() {
   const [pdfFile, setPdfFile] = useState(null);
@@ -36,6 +38,18 @@ function App() {
   const [pptBuilding, setPptBuilding] = useState(false);
   const [pptReady, setPptReady] = useState(false);
   const lastBuildSlidesRef = useRef([]);
+
+  // Polished mode and Theme selection
+  const [polishedMode, setPolishedMode] = useState(false);
+  const [themeName, setThemeName] = useState('azure');
+  const themeOptions = useMemo(() => {
+    try {
+      const list = listThemes();
+      return Array.isArray(list) && list.length ? list : ['azure'];
+    } catch {
+      return ['azure'];
+    }
+  }, []);
 
   const apiKeyAvailable = !!getOpenAIKey();
 
@@ -132,8 +146,22 @@ function App() {
         };
       });
 
+      // Add planning guidance for polished mode and theme
+      const planningGuidance = polishedMode
+        ? `POLISHED MODE: ON.
+Select and specify appropriate slide templates for each slide (e.g., "title-bullets", "image-right", "two-column", "comparison", "flowchart", "section-divider").
+Set a top-level "theme":"${themeName}" field in the JSON output.`
+        : `POLISHED MODE: OFF. Provide a straightforward outline; templates optional.`;
+
       // PUBLIC_INTERFACE
-      const plan = await planSlidesWithOpenAI(pagesData, userContext);
+      const plan = await planSlidesWithOpenAI(
+        pagesData,
+        [userContext, planningGuidance].filter(Boolean).join('\n')
+      );
+      // If polished mode is on and theme not set, set it for generation
+      if (polishedMode && plan && !plan.theme) {
+        plan.theme = themeName;
+      }
       setOutline(plan);
 
       // 4) Preload chat with the proposed outline for user review
@@ -149,7 +177,7 @@ function App() {
     } finally {
       setAnalyzing(false);
     }
-  }, [pdfFile, chatHistory, pptBuilding]);
+  }, [pdfFile, chatHistory, pptBuilding, polishedMode, themeName]);
 
   const selectedSlides = useMemo(() => {
     return analysis.filter(s => !!s.include);
@@ -160,8 +188,8 @@ function App() {
   };
 
   const handleBuildPPT = async () => {
+    // If no outline (user didn't analyze yet)
     if (!outline || !outline.slides || outline.slides.length === 0) {
-      // Backward compatibility: if no outline (user didn't analyze), fallback to selected slides image-based PPT
       if (selectedSlides.length === 0) {
         alert('No outline available and no slides selected. Please Analyze the PDF first or toggle at least one page.');
         return;
@@ -170,12 +198,47 @@ function App() {
         alert('Please wait for analysis to complete before generating the PPT.');
         return;
       }
+
+      // Backward compatibility: Polished Mode OFF -> legacy image-based PPT
+      if (!polishedMode) {
+        setPptBuilding(true);
+        setPptReady(false);
+        try {
+          await generatePptx(selectedSlides, 'Generated Presentation');
+          lastBuildSlidesRef.current = selectedSlides;
+          setPptReady(true);
+        } catch (e) {
+          console.error(e);
+          alert('Failed to generate PPT.');
+        } finally {
+          setPptBuilding(false);
+        }
+        return;
+      }
+
+      // Polished Mode ON but no outline: build a minimal template-aware outline from selected slides
       setPptBuilding(true);
       setPptReady(false);
       try {
-        await generatePptx(selectedSlides, 'Generated Presentation');
-        lastBuildSlidesRef.current = selectedSlides;
+        const imagesByPage = Object.fromEntries(pageImages.map(p => [p.page, p.dataUrl]));
+        const minimalOutline = {
+          theme: themeName,
+          title: 'Generated Presentation',
+          slides: selectedSlides.map(s => ({
+            template: 'image-card',
+            title: s.title || '',
+            caption: s.caption || '',
+            imagePages: [s.page]
+          }))
+        };
+        await generatePptxFromOutline(minimalOutline, imagesByPage, 'Generated Presentation');
+        lastBuildSlidesRef.current = minimalOutline.slides || [];
         setPptReady(true);
+        setOutline(prev => prev && prev.slides?.length ? prev : minimalOutline);
+        setChatHistory(prev => ([
+          ...prev,
+          { role: 'assistant', content: 'Generated a themed PPT using your currently selected pages.' }
+        ]));
       } catch (e) {
         console.error(e);
         alert('Failed to generate PPT.');
@@ -195,10 +258,14 @@ function App() {
     try {
       // Gather user feedback (all user messages)
       const userFeedback = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('\n');
+      const combinedFeedback = polishedMode
+        ? `${userFeedback}\nPolished mode: ON. Use theme "${themeName}". Prefer crisp, modern templates (title-bullets, image-right, two-column, comparison, flowchart, section-divider). Ensure the returned JSON includes "theme":"${themeName}".`
+        : userFeedback;
 
       const pages = pageTexts; // {page,text}
       // PUBLIC_INTERFACE
-      const refined = await refineSlidesWithOpenAI(pages, outline, userFeedback);
+      const refinedRaw = await refineSlidesWithOpenAI(pages, { ...(outline || {}), ...(polishedMode ? { theme: themeName } : {}) }, combinedFeedback);
+      const refined = polishedMode ? { ...refinedRaw, theme: themeName } : refinedRaw;
       setOutline(refined);
 
       // Map images by page for embedding
@@ -286,6 +353,40 @@ function App() {
             </div>
           )}
 
+          {/* Options: Polished Mode + Theme */}
+          <div className="options">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={polishedMode}
+                onChange={(e) => setPolishedMode(e.target.checked)}
+                disabled={isBusy}
+              />
+              Polished Mode
+            </label>
+
+            <div className="option">
+              <label htmlFor="theme-select" className="small">Theme</label>
+              <select
+                id="theme-select"
+                className="select"
+                value={themeName}
+                onChange={(e) => setThemeName(e.target.value)}
+                disabled={!polishedMode || isBusy}
+              >
+                {themeOptions.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="small">
+              {polishedMode
+                ? `Using "${themeName}" with template-aware rendering.`
+                : 'Polished Mode off: simple generation is used if no outline.'}
+            </div>
+          </div>
+
           <div
             className={`upload ${dragOver ? 'dragover' : ''}`}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -322,7 +423,7 @@ function App() {
               <div className="footer-actions">
                 <div className="badge">{selectedSlides.length} of {analysis.length} selected</div>
                 <button type="button" className="btn" onClick={handleBuildPPT} disabled={isBusy}>
-                  {pptBuilding ? 'Building PPT...' : 'Generate PPT'}
+                  {pptBuilding ? 'Building PPT...' : (polishedMode ? 'Generate Polished PPT' : 'Generate PPT')}
                 </button>
               </div>
 
@@ -387,7 +488,7 @@ function App() {
             <form className="chat-input" onSubmit={sendMessage}>
               <input
                 type="text"
-                placeholder="Type changes like: “Merge slides 2-3 and add a KPI slide.”"
+                placeholder='Type changes like: “Merge slides 2-3 and add a KPI slide.”'
                 value={userMessage}
                 onChange={(e) => setUserMessage(e.target.value)}
                 disabled={sending || isBusy}
@@ -397,7 +498,10 @@ function App() {
               </button>
             </form>
 
-            <div className="help">Tip: Your chat feedback is applied to the outline before generating the PPT.</div>
+            <div className="help">
+              Tip: Your chat feedback is applied to the outline before generating the PPT.
+              {polishedMode ? ` Theme: "${themeName}"` : ''}
+            </div>
           </div>
         </section>
       </main>

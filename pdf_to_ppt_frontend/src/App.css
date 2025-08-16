@@ -83,6 +83,35 @@ html, body, #root {
   font-size: 14px;
 }
 
+/* Options row (polished mode + theme) */
+.options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.select {
+  appearance: none;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+}
+
 .upload {
   border: 2px dashed var(--border);
   border-radius: var(--radius);
