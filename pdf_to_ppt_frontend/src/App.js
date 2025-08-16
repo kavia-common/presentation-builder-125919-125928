@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
-import { pdfToImages } from './utils/pdf';
-import { generatePptx } from './services/ppt';
-import { chatWithOpenAI, analyzeImageWithOpenAI } from './services/openaiClient';
+import { pdfToImages, pdfToText } from './utils/pdf';
+import { generatePptxFromOutline, generatePptx } from './services/ppt';
+import { chatWithOpenAI, analyzeImageWithOpenAI, planSlidesWithOpenAI, refineSlidesWithOpenAI, formatOutlineForChat } from './services/openaiClient';
 import { getOpenAIKey } from './config/env';
 
 /**
@@ -10,21 +10,24 @@ import { getOpenAIKey } from './config/env';
  * Provides:
  * - PDF upload
  * - Client-side PDF page rendering as images
- * - Image-by-image LLM analysis (include? title? caption?)
- * - Chat UI with OpenAI
- * - Local PPTX generation and download
+ * - Extract text from each page
+ * - LLM-based slide planning (group/split pages logically)
+ * - Chat UI with OpenAI with preloaded proposed slide content for review
+ * - Local PPTX generation and download (from outline) with user feedback incorporated
  */
 function App() {
   const [pdfFile, setPdfFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
 
   const [pageImages, setPageImages] = useState([]); // { page: number, dataUrl: string }
-  const [analysis, setAnalysis] = useState([]); // per page results
+  const [pageTexts, setPageTexts] = useState([]); // { page: number, text: string }
+  const [analysis, setAnalysis] = useState([]); // per page results for images
+  const [outline, setOutline] = useState(null); // planned slides outline JSON
   const [analyzing, setAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const [chatHistory, setChatHistory] = useState([
-    { role: 'assistant', content: 'Hi! Upload a PDF and press Analyze to pick the most important visuals for your slides. You can also chat with me to guide the tone and selection.' }
+    { role: 'assistant', content: 'Hi! Upload a PDF and press Analyze. I will extract text and images, propose a slide outline, and show the draft here. You can reply with edits before I generate the final PPT.' }
   ]);
   const [userMessage, setUserMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -62,7 +65,9 @@ function App() {
 
   const resetWork = () => {
     setPageImages([]);
+    setPageTexts([]);
     setAnalysis([]);
+    setOutline(null);
     setProgress(0);
     setAnalyzing(false);
     setPptReady(false);
@@ -83,10 +88,17 @@ function App() {
     setAnalyzing(true);
     setProgress(0);
     setAnalysis([]);
+    setOutline(null);
     try {
-      const images = await pdfToImages(pdfFile, 1024);
+      // 1) Render images and extract texts
+      const [images, texts] = await Promise.all([
+        pdfToImages(pdfFile, 1024),
+        pdfToText(pdfFile, 4000)
+      ]);
       setPageImages(images);
+      setPageTexts(texts);
 
+      // 2) Per-page light analysis on images for include/title/caption signals
       const results = [];
       const userContext = chatHistory
         .filter(m => m.role === 'user')
@@ -95,8 +107,6 @@ function App() {
 
       for (let i = 0; i < images.length; i += 1) {
         const img = images[i];
-        // Ask the LLM to judge and describe each page image
-        // to determine if it should be included
         // PUBLIC_INTERFACE
         const analysisResult = await analyzeImageWithOpenAI(img.dataUrl, userContext);
         results.push({
@@ -106,8 +116,32 @@ function App() {
           include: analysisResult?.include ?? false,
         });
         setProgress(Math.round(((i + 1) / images.length) * 100));
-        setAnalysis([...results]); // update progressively
+        setAnalysis([...results]); // progressive update
       }
+
+      // 3) Build a logical slide outline using texts + image analysis signals
+      const pagesData = texts.map(t => {
+        const a = results.find(r => r.page === t.page);
+        return {
+          page: t.page,
+          text: t.text,
+          include: a?.include,
+          title: a?.title,
+          caption: a?.caption
+        };
+      });
+
+      // PUBLIC_INTERFACE
+      const plan = await planSlidesWithOpenAI(pagesData, userContext);
+      setOutline(plan);
+
+      // 4) Preload chat with the proposed outline for user review
+      const outlineText = formatOutlineForChat(plan);
+      setChatHistory(prev => ([
+        ...prev,
+        { role: 'assistant', content: 'I analyzed your PDF and drafted the following slide outline:' },
+        { role: 'assistant', content: outlineText }
+      ]));
     } catch (err) {
       console.error(err);
       alert('Failed to analyze PDF. See console for details.');
@@ -125,24 +159,63 @@ function App() {
   };
 
   const handleBuildPPT = async () => {
-    if (selectedSlides.length === 0) {
-      alert('No slides selected. Toggle at least one to include.');
+    if (!outline || !outline.slides || outline.slides.length === 0) {
+      // Backward compatibility: if no outline (user didn't analyze), fallback to selected slides image-based PPT
+      if (selectedSlides.length === 0) {
+        alert('No outline available and no slides selected. Please Analyze the PDF first or toggle at least one page.');
+        return;
+      }
+      if (analyzing) {
+        alert('Please wait for analysis to complete before generating the PPT.');
+        return;
+      }
+      setPptBuilding(true);
+      setPptReady(false);
+      try {
+        await generatePptx(selectedSlides, 'Generated Presentation');
+        lastBuildSlidesRef.current = selectedSlides;
+        setPptReady(true);
+      } catch (e) {
+        console.error(e);
+        alert('Failed to generate PPT.');
+      } finally {
+        setPptBuilding(false);
+      }
       return;
     }
+
     if (analyzing) {
       alert('Please wait for analysis to complete before generating the PPT.');
       return;
     }
+
     setPptBuilding(true);
     setPptReady(false);
     try {
+      // Gather user feedback (all user messages)
+      const userFeedback = chatHistory.filter(m => m.role === 'user').map(m => m.content).join('\n');
+
+      const pages = pageTexts; // {page,text}
       // PUBLIC_INTERFACE
-      await generatePptx(selectedSlides, 'Generated Presentation');
-      lastBuildSlidesRef.current = selectedSlides;
+      const refined = await refineSlidesWithOpenAI(pages, outline, userFeedback);
+      setOutline(refined);
+
+      // Map images by page for embedding
+      const imagesByPage = Object.fromEntries(pageImages.map(p => [p.page, p.dataUrl]));
+
+      // PUBLIC_INTERFACE
+      await generatePptxFromOutline(refined, imagesByPage, 'Generated Presentation');
+      lastBuildSlidesRef.current = refined?.slides || [];
       setPptReady(true);
+
+      // Append a confirmation message in chat
+      setChatHistory(prev => ([
+        ...prev,
+        { role: 'assistant', content: 'Thanks! I applied your feedback and generated the PPT. Feel free to adjust further and regenerate.' }
+      ]));
     } catch (e) {
       console.error(e);
-      alert('Failed to generate PPT.');
+      alert('Failed to generate PPT from outline.');
     } finally {
       setPptBuilding(false);
     }
@@ -184,7 +257,7 @@ function App() {
         <section className="panel">
           <div className="header">
             <h1 className="title">PDF to PPT Converter</h1>
-            <p className="subtitle">Upload a PDF, let AI pick the best visuals, and download your presentation.</p>
+            <p className="subtitle">Upload a PDF and let AI draft a logical, concise slide deck. Review and give edits in chat before generating.</p>
           </div>
 
           {!apiKeyAvailable && (
@@ -260,7 +333,7 @@ function App() {
         <section className="panel">
           <div className="header">
             <h2 className="title">Chat</h2>
-            <p className="subtitle">Guide the selection criteria. Example: “Focus on charts with KPIs and skip raw tables.”</p>
+            <p className="subtitle">After analysis, I’ll post a proposed slide outline here. Reply with edits, then click “Generate PPT”.</p>
           </div>
 
           <div className="chat">
@@ -275,7 +348,7 @@ function App() {
             <form className="chat-input" onSubmit={sendMessage}>
               <input
                 type="text"
-                placeholder="Type a message for the assistant..."
+                placeholder="Type changes like: “Merge slides 2-3 and add a KPI slide.”"
                 value={userMessage}
                 onChange={(e) => setUserMessage(e.target.value)}
                 disabled={sending || isBusy}
@@ -285,7 +358,7 @@ function App() {
               </button>
             </form>
 
-            <div className="help">Tip: Your chat guidance is used when evaluating which pages/images to include.</div>
+            <div className="help">Tip: Your chat feedback is applied to the outline before generating the PPT.</div>
           </div>
         </section>
       </main>

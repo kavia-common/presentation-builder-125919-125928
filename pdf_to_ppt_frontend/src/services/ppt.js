@@ -85,6 +85,77 @@ export async function generatePptx(slides, fileNameTitle = 'Presentation') {
   }
 }
 
+// PUBLIC_INTERFACE
+/**
+ * generatePptxFromOutline
+ * Creates a PPTX from a structured outline with titles, bullets, and optional images.
+ * @param {{slides:Array<{title:string, bullets:string[], imagePages?:number[], notes?:string}>}} outline
+ * @param {Record<number,string>} imagesByPage - map of pageNumber -> image dataUrl
+ * @param {string} fileNameTitle
+ * @returns {Promise<void>}
+ */
+export async function generatePptxFromOutline(outline, imagesByPage, fileNameTitle = 'Presentation') {
+  if (!outline || !Array.isArray(outline.slides) || outline.slides.length === 0) {
+    throw new Error('Outline is empty. Nothing to generate.');
+  }
+
+  const pptx = new PptxGenJS();
+
+  // Title slide
+  pptx.addSlide().addText(fileNameTitle, {
+    x: 0.5, y: 1.5, w: 9, h: 1,
+    fontSize: 36, bold: true, align: 'center'
+  });
+
+  for (const s of outline.slides) {
+    const slide = pptx.addSlide();
+
+    // Title
+    if (s.title) {
+      slide.addText(s.title, { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 26, bold: true });
+    }
+
+    // Bullets
+    if (Array.isArray(s.bullets) && s.bullets.length) {
+      slide.addText(
+        s.bullets.map((b) => `• ${b}`).join('\n'),
+        { x: 0.7, y: 1.2, w: 5.2, h: 4.5, fontSize: 16, color: '363636' }
+      );
+    }
+
+    // Optional image: choose first referenced image page if exists
+    const imgPage = Array.isArray(s.imagePages) && s.imagePages.length ? s.imagePages[0] : null;
+    const imgData = imgPage ? imagesByPage?.[imgPage] : null;
+    if (imgData) {
+      slide.addImage({
+        data: imgData,
+        x: 6.1, y: 1.2, w: 3.2, h: 4.5,
+        sizing: { type: 'contain', w: 3.2, h: 4.5 }
+      });
+    }
+
+    // Optional notes
+    if (s.notes) {
+      slide.addNotes(s.notes);
+    }
+  }
+
+  const fileName = `${sanitize(fileNameTitle)}.pptx`;
+
+  // Try built-in file save first, then fallback to Blob/manual download.
+  try {
+    await pptx.writeFile({ fileName });
+  } catch (err) {
+    try {
+      const blob = await pptx.write('blob');
+      downloadBlob(blob, fileName);
+    } catch (inner) {
+      const details = inner?.message || inner?.toString?.() || 'Unknown error';
+      throw new Error(`Failed to generate or download PPTX from outline: ${details}`);
+    }
+  }
+}
+
 function sanitize(name) {
   return String(name).replace(/[^\w\-]+/g, '_');
 }

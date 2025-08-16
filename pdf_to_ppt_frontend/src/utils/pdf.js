@@ -41,3 +41,30 @@ export async function pdfToImages(pdfFile, maxWidth = 1024) {
 
   return results;
 }
+
+/**
+ * PUBLIC_INTERFACE
+ * pdfToText
+ * Extracts text from each page of the provided PDF file.
+ * @param {File} pdfFile - the input PDF file (from input[type=file])
+ * @param {number} maxCharsPerPage - truncate each page's extracted text to this many characters
+ * @returns {Promise<Array<{ page: number, text: string }>>}
+ */
+export async function pdfToText(pdfFile, maxCharsPerPage = 4000) {
+  if (!pdfFile) return [];
+  const ab = await pdfFile.arrayBuffer();
+  const loadingTask = getDocument({ data: ab });
+  const pdf = await loadingTask.promise;
+
+  const results = [];
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    // Join text items with spaces, and normalize whitespace
+    const raw = textContent.items.map((it) => (it.str || '')).join(' ');
+    const normalized = raw.replace(/\s+/g, ' ').trim();
+    const truncated = normalized.slice(0, Math.max(0, maxCharsPerPage));
+    results.push({ page: pageNum, text: truncated });
+  }
+  return results;
+}
