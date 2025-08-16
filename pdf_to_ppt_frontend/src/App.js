@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './App.css';
 import { pdfToImages, pdfToText } from './utils/pdf';
 import { generatePptxFromOutline, generatePptx } from './services/ppt';
@@ -229,18 +230,36 @@ function App() {
       return;
     }
 
-    const newHistory = [...chatHistory, { role: 'user', content: userMessage }];
-    setChatHistory(newHistory);
+    // Insert/replace or prepend a system prompt asking LLM to reply in markdown.
+    const systemMarkdownPrompt = {
+      role: "system",
+      content:
+        "You are a helpful assistant. Format ALL of your responses using markdown. Use markdown for headings, bold, italics, lists, code, and tables as appropriate. Never return plain text."
+    };
+    // Ensure there is only one such system prompt at the front
+    let newHistory;
+    if (
+      chatHistory.length > 0 &&
+      chatHistory[0].role === "system" &&
+      chatHistory[0].content &&
+      chatHistory[0].content.includes("markdown")
+    ) {
+      newHistory = [...chatHistory, { role: "user", content: userMessage }];
+      newHistory[0] = systemMarkdownPrompt;
+    } else {
+      newHistory = [systemMarkdownPrompt, ...chatHistory, { role: "user", content: userMessage }];
+    }
+    setChatHistory([...chatHistory, { role: 'user', content: userMessage }]);
     setUserMessage('');
     setSending(true);
 
     try {
       // PUBLIC_INTERFACE
       const assistantReply = await chatWithOpenAI(newHistory);
-      setChatHistory([...newHistory, { role: 'assistant', content: assistantReply }]);
+      setChatHistory([...chatHistory, { role: 'user', content: userMessage }, { role: 'assistant', content: assistantReply }]);
     } catch (err) {
       console.error(err);
-      setChatHistory([...newHistory, { role: 'assistant', content: 'Sorry, something went wrong while contacting OpenAI.' }]);
+      setChatHistory([...chatHistory, { role: 'user', content: userMessage }, { role: 'assistant', content: 'Sorry, something went wrong while contacting OpenAI.' }]);
     } finally {
       setSending(false);
     }
@@ -338,11 +357,31 @@ function App() {
 
           <div className="chat">
             <div className="chat-log" aria-label="chat log">
-              {chatHistory.map((m, idx) => (
-                <div key={idx} className={`msg ${m.role === 'user' ? 'user' : 'assistant'}`}>
-                  {m.content}
-                </div>
-              ))}
+              {chatHistory.map((m, idx) => {
+                // Render user messages as plain text, assistant messages with markdown
+                if (m.role === 'assistant') {
+                  return (
+                    <div key={idx} className="msg assistant">
+                      <ReactMarkdown
+                        children={m.content}
+                        linkTarget="_blank"
+                        components={{
+                          // Optionally customize, e.g., code, tables, etc.
+                        }}
+                      />
+                    </div>
+                  );
+                } else if (m.role === 'user') {
+                  return (
+                    <div key={idx} className="msg user">
+                      {m.content}
+                    </div>
+                  );
+                } else {
+                  // Could include system or other roles if visible
+                  return null;
+                }
+              })}
             </div>
 
             <form className="chat-input" onSubmit={sendMessage}>
