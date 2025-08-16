@@ -204,7 +204,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
         setPptBuilding(true);
         setPptReady(false);
         try {
-          await generatePptx(selectedSlides, 'Generated Presentation');
+          await generatePptx(selectedSlides, 'Generated Presentation', { themeName });
           lastBuildSlidesRef.current = selectedSlides;
           setPptReady(true);
         } catch (e) {
@@ -372,7 +372,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
                 className="select"
                 value={themeName}
                 onChange={(e) => setThemeName(e.target.value)}
-                disabled={!polishedMode || isBusy}
+                disabled={isBusy}
               >
                 {themeOptions.map((t) => (
                   <option key={t} value={t}>{t}</option>

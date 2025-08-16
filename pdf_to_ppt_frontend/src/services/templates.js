@@ -81,9 +81,15 @@ function renderTitle(_pptx, slide, data, theme) {
   const titleStyle = { ...titleTextStyle(theme), align: "center" };
   slide.addText(title, { x: 0.5, y: 2.0, w: 9, h: 1, ...titleStyle });
 
+  // Accent divider under the title for visual emphasis
+  slide.addShape("line", {
+    x: 2.0, y: 2.9, w: 6.0, h: 0,
+    line: { color: (theme?.colors?.accent || "FFC107"), width: 3 }
+  });
+
   if (subtitle) {
     const subStyle = { ...bodyTextStyle(theme), align: "center", color: theme.colors.muted };
-    slide.addText(subtitle, { x: 0.5, y: 3.0, w: 9, h: 0.7, ...subStyle });
+    slide.addText(subtitle, { x: 0.5, y: 3.1, w: 9, h: 0.7, ...subStyle });
   }
 }
 
@@ -98,6 +104,11 @@ function renderTitleBullets(_pptx, slide, data, theme) {
     w: 8.8,
     h: 0.7,
     ...titleTextStyle(theme)
+  });
+
+  // Accent divider
+  slide.addShape("line", {
+    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
   });
 
   if (bullets.length) {
@@ -160,6 +171,15 @@ function renderImageSide(_pptx, slide, data, theme, side = "right") {
   const textBox = { x: side === "left" ? 4.0 : 0.8, y: 1.2, w: 5.2, h: 4.2 };
 
   slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
+
+  slide.addShape("line", {
+    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
+  });
+
+  // Accent divider
+  slide.addShape("line", {
+    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
+  });
 
   if (image) {
     slide.addImage({ data: image, ...imageBox, sizing: { type: "contain", w: imageBox.w, h: imageBox.h } });

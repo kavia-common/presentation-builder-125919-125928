@@ -1,5 +1,6 @@
 //
 //
+//
 // Theme registry and design tokens for PPT rendering via pptxgenjs.
 // Provides color palettes, typography scales, and helper utilities.
 //
@@ -71,9 +72,254 @@ function buildAzureTheme() {
   };
 }
 
+/** Midnight (dark) theme for high-contrast slides. */
+function buildMidnightTheme() {
+  const colors = {
+    primary: normalizeHex("#60A5FA"),     // sky-400
+    secondary: normalizeHex("#94A3B8"),   // slate-400
+    accent: normalizeHex("#C084FC"),      // violet-400
+    background: normalizeHex("#0F172A"),  // slate-900
+    backgroundSoft: normalizeHex("#111827"),
+    text: normalizeHex("#F8FAFC"),        // slate-50
+    muted: normalizeHex("#CBD5E1"),       // slate-300
+    border: normalizeHex("#1F2937"),      // gray-800
+    white: normalizeHex("#FFFFFF"),
+    black: normalizeHex("#000000")
+  };
+
+  const typography = {
+    title: { fontSize: 34, bold: true, color: colors.text },
+    h1: { fontSize: 30, bold: true, color: colors.text },
+    h2: { fontSize: 22, bold: true, color: colors.text },
+    body: { fontSize: 16, color: colors.text },
+    caption: { fontSize: 12, color: colors.muted }
+  };
+
+  const spacing = { pageMarginX: 0.5, pageMarginY: 0.5, gutter: 0.3 };
+
+  const cards = {
+    fill: { color: colors.backgroundSoft },
+    line: { color: colors.border, width: 1 },
+    shadow: { type: "outer", opacity: 0.35, blur: 4, offset: 1 },
+    shape: "roundRect"
+  };
+
+  const bullets = {
+    indentLevel: 0.5,
+    bulletSize: 14,
+    bulletColor: colors.text
+  };
+
+  return {
+    name: "midnight",
+    colors,
+    typography,
+    spacing,
+    cards,
+    bullets
+  };
+}
+
+/** Slate (subtle cool light) theme. */
+function buildSlateTheme() {
+  const colors = {
+    primary: normalizeHex("#334155"),       // slate-700
+    secondary: normalizeHex("#64748B"),     // slate-500
+    accent: normalizeHex("#3B82F6"),        // blue-500
+    background: normalizeHex("#F8FAFC"),    // slate-50
+    backgroundSoft: normalizeHex("#F1F5F9"),// slate-100
+    text: normalizeHex("#0F172A"),          // slate-900
+    muted: normalizeHex("#475569"),         // slate-600
+    border: normalizeHex("#E2E8F0"),        // slate-200
+    white: normalizeHex("#FFFFFF"),
+    black: normalizeHex("#000000")
+  };
+
+  const typography = {
+    title: { fontSize: 32, bold: true, color: colors.text },
+    h1: { fontSize: 28, bold: true, color: colors.text },
+    h2: { fontSize: 22, bold: true, color: colors.text },
+    body: { fontSize: 16, color: colors.text },
+    caption: { fontSize: 12, color: colors.muted }
+  };
+
+  const spacing = { pageMarginX: 0.5, pageMarginY: 0.5, gutter: 0.25 };
+
+  const cards = {
+    fill: { color: colors.white },
+    line: { color: colors.border, width: 1 },
+    shadow: { type: "outer", opacity: 0.14, blur: 3, offset: 1 },
+    shape: "roundRect"
+  };
+
+  const bullets = {
+    indentLevel: 0.5,
+    bulletSize: 14,
+    bulletColor: colors.text
+  };
+
+  return {
+    name: "slate",
+    colors,
+    typography,
+    spacing,
+    cards,
+    bullets
+  };
+}
+
+/** Coral/Sunset warm theme. */
+function buildCoralTheme() {
+  const colors = {
+    primary: normalizeHex("#EA580C"),      // orange-600
+    secondary: normalizeHex("#92400E"),    // amber-800-ish
+    accent: normalizeHex("#F97316"),       // orange-500
+    background: normalizeHex("#FFF7ED"),   // orange-50
+    backgroundSoft: normalizeHex("#FFFBEB"),// amber-50
+    text: normalizeHex("#1F2937"),         // gray-800
+    muted: normalizeHex("#6B7280"),        // gray-500
+    border: normalizeHex("#FED7AA"),       // orange-200
+    white: normalizeHex("#FFFFFF"),
+    black: normalizeHex("#000000")
+  };
+
+  const typography = {
+    title: { fontSize: 32, bold: true, color: colors.text },
+    h1: { fontSize: 28, bold: true, color: colors.text },
+    h2: { fontSize: 22, bold: true, color: colors.text },
+    body: { fontSize: 16, color: colors.text },
+    caption: { fontSize: 12, color: colors.muted }
+  };
+
+  const spacing = { pageMarginX: 0.5, pageMarginY: 0.5, gutter: 0.25 };
+
+  const cards = {
+    fill: { color: colors.white },
+    line: { color: colors.border, width: 1 },
+    shadow: { type: "outer", opacity: 0.18, blur: 3, offset: 1 },
+    shape: "roundRect"
+  };
+
+  const bullets = {
+    indentLevel: 0.5,
+    bulletSize: 14,
+    bulletColor: colors.text
+  };
+
+  return {
+    name: "coral",
+    colors,
+    typography,
+    spacing,
+    cards,
+    bullets
+  };
+}
+
+/** Emerald (fresh green) theme. */
+function buildEmeraldTheme() {
+  const colors = {
+    primary: normalizeHex("#065F46"),        // emerald-800
+    secondary: normalizeHex("#047857"),      // emerald-700
+    accent: normalizeHex("#10B981"),         // emerald-500
+    background: normalizeHex("#F0FDF4"),     // emerald-50
+    backgroundSoft: normalizeHex("#ECFDF5"), // emerald-50 alt
+    text: normalizeHex("#052E16"),           // emerald-950
+    muted: normalizeHex("#475569"),          // slate-600
+    border: normalizeHex("#A7F3D0"),         // emerald-200
+    white: normalizeHex("#FFFFFF"),
+    black: normalizeHex("#000000")
+  };
+
+  const typography = {
+    title: { fontSize: 32, bold: true, color: colors.text },
+    h1: { fontSize: 28, bold: true, color: colors.text },
+    h2: { fontSize: 22, bold: true, color: colors.text },
+    body: { fontSize: 16, color: colors.text },
+    caption: { fontSize: 12, color: colors.muted }
+  };
+
+  const spacing = { pageMarginX: 0.5, pageMarginY: 0.5, gutter: 0.25 };
+
+  const cards = {
+    fill: { color: colors.white },
+    line: { color: colors.border, width: 1 },
+    shadow: { type: "outer", opacity: 0.14, blur: 3, offset: 1 },
+    shape: "roundRect"
+  };
+
+  const bullets = {
+    indentLevel: 0.5,
+    bulletSize: 14,
+    bulletColor: colors.text
+  };
+
+  return {
+    name: "emerald",
+    colors,
+    typography,
+    spacing,
+    cards,
+    bullets
+  };
+}
+
+/** Minimal theme with monochrome accents. */
+function buildMinimalTheme() {
+  const colors = {
+    primary: normalizeHex("#111827"),        // gray-900
+    secondary: normalizeHex("#6B7280"),      // gray-500
+    accent: normalizeHex("#6B7280"),         // gray-500
+    background: normalizeHex("#FFFFFF"),
+    backgroundSoft: normalizeHex("#F9FAFB"), // gray-50
+    text: normalizeHex("#111827"),           // gray-900
+    muted: normalizeHex("#6B7280"),          // gray-500
+    border: normalizeHex("#E5E7EB"),         // gray-200
+    white: normalizeHex("#FFFFFF"),
+    black: normalizeHex("#000000")
+  };
+
+  const typography = {
+    title: { fontSize: 32, bold: true, color: colors.text },
+    h1: { fontSize: 28, bold: true, color: colors.text },
+    h2: { fontSize: 22, bold: true, color: colors.text },
+    body: { fontSize: 16, color: colors.text },
+    caption: { fontSize: 12, color: colors.muted }
+  };
+
+  const spacing = { pageMarginX: 0.6, pageMarginY: 0.6, gutter: 0.25 };
+
+  const cards = {
+    fill: { color: colors.white },
+    line: { color: colors.border, width: 1 },
+    shadow: undefined,
+    shape: "roundRect"
+  };
+
+  const bullets = {
+    indentLevel: 0.5,
+    bulletSize: 14,
+    bulletColor: colors.text
+  };
+
+  return {
+    name: "minimal",
+    colors,
+    typography,
+    spacing,
+    cards,
+    bullets
+  };
+}
+
 /** Theme registry */
 const THEMES = {
-  azure: buildAzureTheme()
+  azure: buildAzureTheme(),
+  midnight: buildMidnightTheme(),
+  slate: buildSlateTheme(),
+  coral: buildCoralTheme(),
+  emerald: buildEmeraldTheme(),
+  minimal: buildMinimalTheme()
 };
 
 // PUBLIC_INTERFACE

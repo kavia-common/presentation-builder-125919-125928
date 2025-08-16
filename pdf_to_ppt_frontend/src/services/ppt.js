@@ -41,12 +41,18 @@ function downloadBlob(blob, fileName) {
  * @param {string} fileNameTitle
  * @returns {Promise<void>}
  */
-export async function generatePptx(slides, fileNameTitle = "Presentation") {
+export async function generatePptx(slides, fileNameTitle = "Presentation", options = {}) {
+  /**
+   * @param {Array<{ imageDataUrl: string, title?: string, caption?: string }>} slides
+   * @param {string} fileNameTitle
+   * @param {{ themeName?: string }} options - optional theme selector; defaults to "azure"
+   */
   if (!Array.isArray(slides) || slides.length === 0) {
     throw new Error("No slides provided to generatePptx.");
   }
 
-  const baseTheme = getTheme("azure");
+  const themeSelectionName = (options && options.themeName) ? String(options.themeName) : "azure";
+  const baseTheme = getTheme(themeSelectionName);
   const candidateImages = (Array.isArray(slides) ? slides.map(s => s?.imageDataUrl).filter(Boolean) : []);
   const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
   const pptx = new PptxGenJS();
