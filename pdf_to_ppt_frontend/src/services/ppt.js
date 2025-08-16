@@ -1,7 +1,13 @@
 /**
- * PPT generation utilities using pptxgenjs.
+ * PPT generation utilities using pptxgenjs, now with theme and template support.
+ * Backward-compatible public interfaces:
+ *  - generatePptx(slides, fileNameTitle)
+ *  - generatePptxFromOutline(outline, imagesByPage, fileNameTitle)
  */
-import PptxGenJS from 'pptxgenjs';
+
+import PptxGenJS from "pptxgenjs";
+import { getTheme, slideOptionsForTheme, titleTextStyle } from "./themes";
+import { renderSlide, normalizeTemplateKey } from "./templates";
 
 /**
  * downloadBlob
@@ -13,10 +19,10 @@ import PptxGenJS from 'pptxgenjs';
 function downloadBlob(blob, fileName) {
   const url = URL.createObjectURL(blob);
   try {
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = fileName;
-    a.rel = 'noopener';
+    a.rel = "noopener";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -30,41 +36,39 @@ function downloadBlob(blob, fileName) {
 /**
  * generatePptx
  * Creates a PPTX file with one slide per selected item and triggers a download.
- * It attempts pptx.writeFile (built-in save) and falls back to a Blob download if needed.
+ * Backward-compatible simple renderer (image-focused), now styled with default theme.
  * @param {Array<{ imageDataUrl: string, title?: string, caption?: string }>} slides
  * @param {string} fileNameTitle
  * @returns {Promise<void>}
  */
-export async function generatePptx(slides, fileNameTitle = 'Presentation') {
+export async function generatePptx(slides, fileNameTitle = "Presentation") {
   if (!Array.isArray(slides) || slides.length === 0) {
-    throw new Error('No slides provided to generatePptx.');
+    throw new Error("No slides provided to generatePptx.");
   }
 
+  const theme = getTheme("azure");
   const pptx = new PptxGenJS();
 
   // Title slide
-  pptx.addSlide().addText(fileNameTitle, {
+  const titleSlide = pptx.addSlide(slideOptionsForTheme(theme));
+  titleSlide.addText(fileNameTitle, {
     x: 0.5, y: 1.5, w: 9, h: 1,
-    fontSize: 36, bold: true, align: 'center'
+    ...titleTextStyle(theme),
+    align: "center",
+    fontSize: Math.max(32, (theme.typography?.title?.fontSize || 32))
   });
 
   for (const s of slides) {
-    const slide = pptx.addSlide();
+    const slide = pptx.addSlide(slideOptionsForTheme(theme));
 
-    // Image sized to fit slide with margins
-    slide.addImage({
-      data: s.imageDataUrl,
-      x: 0.5, y: 0.5, w: 9, h: 5.5,
-      sizing: { type: 'contain', w: 9, h: 5.5 }
-    });
-
-    // Title and caption if present
-    if (s.title) {
-      slide.addText(s.title, { x: 0.5, y: 6.2, w: 9, h: 0.5, fontSize: 20, bold: true });
-    }
-    if (s.caption) {
-      slide.addText(s.caption, { x: 0.5, y: 6.7, w: 9, h: 1, fontSize: 14, color: '666666' });
-    }
+    // Prefer the IMAGE_CARD template semantics
+    const data = {
+      title: s.title || "",
+      image: s.imageDataUrl,
+      caption: s.caption || ""
+    };
+    // Render using template engine
+    renderSlide(pptx, slide, "IMAGE_CARD", data, theme);
   }
 
   const fileName = `${sanitize(fileNameTitle)}.pptx`;
@@ -72,14 +76,12 @@ export async function generatePptx(slides, fileNameTitle = 'Presentation') {
   // Try built-in file save first, then fallback to Blob/manual download.
   try {
     await pptx.writeFile({ fileName });
-  } catch (err) {
-    // Fallback to blob approach (more robust across environments)
+  } catch (_err) {
     try {
-      const blob = await pptx.write('blob');
+      const blob = await pptx.write("blob");
       downloadBlob(blob, fileName);
     } catch (inner) {
-      // If both methods fail, surface the original error context
-      const details = inner?.message || inner?.toString?.() || 'Unknown error';
+      const details = inner?.message || inner?.toString?.() || "Unknown error";
       throw new Error(`Failed to generate or download PPTX: ${details}`);
     }
   }
@@ -88,74 +90,109 @@ export async function generatePptx(slides, fileNameTitle = 'Presentation') {
 // PUBLIC_INTERFACE
 /**
  * generatePptxFromOutline
- * Creates a PPTX from a structured outline with titles, bullets, and optional images.
- * @param {{slides:Array<{title:string, bullets:string[], imagePages?:number[], notes?:string}>}} outline
- * @param {Record<number,string>} imagesByPage - map of pageNumber -> image dataUrl
+ * Creates a PPTX from a structured outline with titles, bullets, images and template/theme hints.
+ * Supports the enhanced outline JSON including:
+ *  - slide.template (e.g., "title-bullets", "image-right", "two-column", "flowchart")
+ *  - outline.theme (e.g., "azure")
+ *  - slide.imagePages (array of page numbers)
+ *
+ * @param {{theme?: string, title?: string, slides:Array<{template?: string, title:string, bullets?:string[], imagePages?:number[], notes?:string, subtitle?:string, flow?:{steps?:string[]}, left?:{title?:string, bullets?:string[]}, right?:{title?:string, bullets?:string[]}}>} outline
+ * @param {Record<number, string>} imagesByPage - map of pageNumber -> image dataUrl
  * @param {string} fileNameTitle
  * @returns {Promise<void>}
  */
-export async function generatePptxFromOutline(outline, imagesByPage, fileNameTitle = 'Presentation') {
+export async function generatePptxFromOutline(outline, imagesByPage, fileNameTitle = "Presentation") {
   if (!outline || !Array.isArray(outline.slides) || outline.slides.length === 0) {
-    throw new Error('Outline is empty. Nothing to generate.');
+    throw new Error("Outline is empty. Nothing to generate.");
   }
 
+  const themeName = outline.theme || "azure";
+  const theme = getTheme(themeName);
   const pptx = new PptxGenJS();
 
-  // Title slide
-  pptx.addSlide().addText(fileNameTitle, {
+  // Title slide (use doc title if provided; otherwise use fileNameTitle)
+  const deckTitle = outline.title || fileNameTitle;
+  const titleSlide = pptx.addSlide(slideOptionsForTheme(theme));
+  titleSlide.addText(deckTitle, {
     x: 0.5, y: 1.5, w: 9, h: 1,
-    fontSize: 36, bold: true, align: 'center'
+    ...titleTextStyle(theme),
+    align: "center",
+    fontSize: Math.max(32, (theme.typography?.title?.fontSize || 32))
   });
 
   for (const s of outline.slides) {
-    const slide = pptx.addSlide();
+    const slide = pptx.addSlide(slideOptionsForTheme(theme));
 
-    // Title
-    if (s.title) {
-      slide.addText(s.title, { x: 0.5, y: 0.4, w: 9, h: 0.6, fontSize: 26, bold: true });
-    }
+    // Determine images (prefer first listed page)
+    const primaryImage = pickFirstImage(s, imagesByPage);
 
-    // Bullets
-    if (Array.isArray(s.bullets) && s.bullets.length) {
-      slide.addText(
-        s.bullets.map((b) => `• ${b}`).join('\n'),
-        { x: 0.7, y: 1.2, w: 5.2, h: 4.5, fontSize: 16, color: '363636' }
-      );
-    }
+    // Normalize data for templates
+    const data = {
+      title: s.title || "",
+      subtitle: s.subtitle || "",
+      bullets: Array.isArray(s.bullets) ? s.bullets : [],
+      image: primaryImage,
+      caption: s.caption || "",
+      flow: s.flow,
+      left: s.left,
+      right: s.right,
+      col1: s.col1,
+      col2: s.col2
+    };
 
-    // Optional image: choose first referenced image page if exists
-    const imgPage = Array.isArray(s.imagePages) && s.imagePages.length ? s.imagePages[0] : null;
-    const imgData = imgPage ? imagesByPage?.[imgPage] : null;
-    if (imgData) {
-      slide.addImage({
-        data: imgData,
-        x: 6.1, y: 1.2, w: 3.2, h: 4.5,
-        sizing: { type: 'contain', w: 3.2, h: 4.5 }
-      });
-    }
+    const templateKey = inferTemplateKey(s, data);
+    renderSlide(pptx, slide, templateKey, data, theme);
 
     // Optional notes
     if (s.notes) {
-      slide.addNotes(s.notes);
+      try { slide.addNotes(s.notes); } catch { /* ignore */ }
     }
   }
 
-  const fileName = `${sanitize(fileNameTitle)}.pptx`;
+  const fileName = `${sanitize(deckTitle)}.pptx`;
 
-  // Try built-in file save first, then fallback to Blob/manual download.
   try {
     await pptx.writeFile({ fileName });
-  } catch (err) {
+  } catch (_err) {
     try {
-      const blob = await pptx.write('blob');
+      const blob = await pptx.write("blob");
       downloadBlob(blob, fileName);
     } catch (inner) {
-      const details = inner?.message || inner?.toString?.() || 'Unknown error';
+      const details = inner?.message || inner?.toString?.() || "Unknown error";
       throw new Error(`Failed to generate or download PPTX from outline: ${details}`);
     }
   }
 }
 
+/* ------------------------ Helpers ------------------------ */
+
 function sanitize(name) {
-  return String(name).replace(/[^\w\-]+/g, '_');
+  return String(name).replace(/[^\w\-]+/g, "_");
+}
+
+function pickFirstImage(slideDef, imagesByPage) {
+  if (!slideDef) return null;
+  const pages = Array.isArray(slideDef.imagePages) ? slideDef.imagePages : [];
+  for (const p of pages) {
+    if (imagesByPage && imagesByPage[p]) return imagesByPage[p];
+  }
+  return null;
+}
+
+function inferTemplateKey(slideDef, data) {
+  // Use provided template if present
+  if (slideDef?.template) return normalizeTemplateKey(slideDef.template);
+
+  // Heuristics
+  const hasImage = !!data.image;
+  const bulletsLen = Array.isArray(data.bullets) ? data.bullets.length : 0;
+
+  if (slideDef?.flow?.steps?.length) return "FLOWCHART";
+  if (slideDef?.left || slideDef?.right) return "COMPARISON";
+  if (slideDef?.col1 || slideDef?.col2) return "TWO_COLUMN";
+  if (hasImage && bulletsLen > 0) return "IMAGE_RIGHT"; // default side
+  if (hasImage) return "IMAGE_CARD";
+  if (!hasImage && bulletsLen > 0 && data.title) return "TITLE_BULLETS";
+  if (data.title && !bulletsLen) return "TITLE";
+  return "BULLETS";
 }
