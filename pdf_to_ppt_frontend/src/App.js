@@ -35,6 +35,9 @@ function App() {
 
   const apiKeyAvailable = !!getOpenAIKey();
 
+  // Busy indicator shared across flows: prevents cross-triggering UI actions.
+  const isBusy = analyzing || pptBuilding;
+
   useEffect(() => {
     document.title = 'PDF to PPT Converter';
   }, []);
@@ -72,6 +75,10 @@ function App() {
       alert('Missing OpenAI API key. Please set REACT_APP_OPENAI_API_KEY in .env or public/runtime-env.js and restart.');
       return;
     }
+    if (pptBuilding) {
+      alert('Please wait until PPT building completes before analyzing again.');
+      return;
+    }
 
     setAnalyzing(true);
     setProgress(0);
@@ -107,7 +114,7 @@ function App() {
     } finally {
       setAnalyzing(false);
     }
-  }, [pdfFile, chatHistory]);
+  }, [pdfFile, chatHistory, pptBuilding]);
 
   const selectedSlides = useMemo(() => {
     return analysis.filter(s => !!s.include);
@@ -120,6 +127,10 @@ function App() {
   const handleBuildPPT = async () => {
     if (selectedSlides.length === 0) {
       alert('No slides selected. Toggle at least one to include.');
+      return;
+    }
+    if (analyzing) {
+      alert('Please wait for analysis to complete before generating the PPT.');
       return;
     }
     setPptBuilding(true);
@@ -197,10 +208,10 @@ function App() {
           </div>
 
           <div className="actions">
-            <button className="btn" onClick={handleAnalyze} disabled={!pdfFile || analyzing}>
+            <button type="button" className="btn" onClick={handleAnalyze} disabled={!pdfFile || isBusy}>
               {analyzing ? 'Analyzing...' : 'Analyze PDF'}
             </button>
-            <button className="btn muted" onClick={() => resetWork()} disabled={!pdfFile && pageImages.length === 0 && analysis.length === 0}>
+            <button type="button" className="btn muted" onClick={() => resetWork()} disabled={isBusy || (!pdfFile && pageImages.length === 0 && analysis.length === 0)}>
               Reset
             </button>
           </div>
@@ -218,7 +229,7 @@ function App() {
             <>
               <div className="footer-actions">
                 <div className="badge">{selectedSlides.length} of {analysis.length} selected</div>
-                <button className="btn" onClick={handleBuildPPT} disabled={pptBuilding}>
+                <button type="button" className="btn" onClick={handleBuildPPT} disabled={isBusy}>
                   {pptBuilding ? 'Building PPT...' : 'Generate PPT'}
                 </button>
               </div>
@@ -267,8 +278,9 @@ function App() {
                 placeholder="Type a message for the assistant..."
                 value={userMessage}
                 onChange={(e) => setUserMessage(e.target.value)}
+                disabled={sending || isBusy}
               />
-              <button className="btn" type="submit" disabled={sending || !userMessage.trim()}>
+              <button className="btn" type="submit" disabled={sending || !userMessage.trim() || isBusy}>
                 {sending ? 'Sending...' : 'Send'}
               </button>
             </form>
