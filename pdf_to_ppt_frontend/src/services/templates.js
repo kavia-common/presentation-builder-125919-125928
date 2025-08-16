@@ -10,7 +10,7 @@
 // PUBLIC_INTERFACE helpers and registry are exported.
 //
 
-import { slideOptionsForTheme, titleTextStyle, bodyTextStyle, captionTextStyle, cardShapeOptions, primaryColor } from "./themes";
+import { slideOptionsForTheme, titleTextStyle, bodyTextStyle, captionTextStyle, cardShapeOptions, primaryColor, accentColor } from "./themes";
 
 // Layout constants
 const SLIDE_WIDTH = 10;  // standard widescreen: 10" x 5.625"
@@ -413,7 +413,7 @@ function renderSectionDivider(_pptx, slide, data, theme) {
     x: 0.5, y: 2.0, w: 9.0, h: 1.0,
     ...titleTextStyle(theme),
     align: "center",
-    color: primaryColor(theme)
+    color: accentColor(theme)
   });
 
   if (subtitle) {

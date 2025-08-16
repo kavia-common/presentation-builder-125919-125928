@@ -6,7 +6,7 @@
  */
 
 import PptxGenJS from "pptxgenjs";
-import { getTheme, slideOptionsForTheme, titleTextStyle } from "./themes";
+import { getTheme, slideOptionsForTheme, titleTextStyle, deriveThemeWithAutoAccent } from "./themes";
 import { renderSlide, normalizeTemplateKey } from "./templates";
 
 /**
@@ -46,7 +46,9 @@ export async function generatePptx(slides, fileNameTitle = "Presentation") {
     throw new Error("No slides provided to generatePptx.");
   }
 
-  const theme = getTheme("azure");
+  const baseTheme = getTheme("azure");
+  const candidateImages = (Array.isArray(slides) ? slides.map(s => s?.imageDataUrl).filter(Boolean) : []);
+  const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
   const pptx = new PptxGenJS();
 
   // Title slide
@@ -107,7 +109,9 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
   }
 
   const themeName = outline.theme || "azure";
-  const theme = getTheme(themeName);
+  const baseTheme = getTheme(themeName);
+  const candidateImages = (Array.isArray(outline.slides) ? outline.slides.map(s => pickFirstImage(s, imagesByPage)).filter(Boolean) : []);
+  const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
   const pptx = new PptxGenJS();
 
   // Title slide (use doc title if provided; otherwise use fileNameTitle)

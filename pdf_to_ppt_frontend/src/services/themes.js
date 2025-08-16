@@ -1,4 +1,5 @@
 //
+//
 // Theme registry and design tokens for PPT rendering via pptxgenjs.
 // Provides color palettes, typography scales, and helper utilities.
 //
@@ -157,4 +158,175 @@ export function cardShapeOptions(theme) {
 export function primaryColor(theme) {
   /** Returns the primary color (hex without '#') for the given theme. */
   return theme?.colors?.primary || "1976D2";
+}
+
+// PUBLIC_INTERFACE
+export function accentColor(theme) {
+  /** Returns the accent color (hex without '#') for the given theme. */
+  return theme?.colors?.accent || "FFC107";
+}
+
+/* ----------------------- Color utilities (internal) ----------------------- */
+
+function hexToRgb(hex) {
+  const h = normalizeHex(hex);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return { r, g, b };
+}
+
+function rgbToHex(r, g, b) {
+  const clamp = (x) => Math.max(0, Math.min(255, Math.round(x)));
+  return (
+    clamp(r).toString(16).padStart(2, "0") +
+    clamp(g).toString(16).padStart(2, "0") +
+    clamp(b).toString(16).padStart(2, "0")
+  ).toUpperCase();
+}
+
+/** sRGB to relative luminance per WCAG */
+function relativeLuminanceHex(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const srgb = [r, g, b].map((v) => v / 255);
+  const linear = srgb.map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  const [R, G, B] = linear;
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+}
+
+function contrastRatio(hex1, hex2) {
+  const L1 = relativeLuminanceHex(hex1);
+  const L2 = relativeLuminanceHex(hex2);
+  const lighter = Math.max(L1, L2);
+  const darker = Math.min(L1, L2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function isLight(hex) {
+  return relativeLuminanceHex(hex) > 0.5;
+}
+
+function mix(hex1, hex2, t) {
+  // linear mix of two hex colors
+  const a = hexToRgb(hex1);
+  const b = hexToRgb(hex2);
+  const r = a.r + (b.r - a.r) * t;
+  const g = a.g + (b.g - a.g) * t;
+  const bl = a.b + (b.b - a.b) * t;
+  return rgbToHex(r, g, bl);
+}
+
+/** Try to adjust color towards required contrast against a background */
+function adjustForContrast(candidateHex, bgHex, minRatio = 3.0) {
+  const MAX_STEPS = 20;
+  let color = normalizeHex(candidateHex);
+  const bg = normalizeHex(bgHex);
+
+  // If already sufficient, return as-is
+  if (contrastRatio(color, bg) >= minRatio) return color;
+
+  // Decide direction: if background is light, darken candidate; else lighten it
+  const bgIsLight = isLight(bg);
+  const target = bgIsLight ? "000000" : "FFFFFF";
+
+  for (let i = 1; i <= MAX_STEPS; i += 1) {
+    const t = i / MAX_STEPS; // 0->1
+    const adjusted = bgIsLight ? mix(color, target, t) : mix(color, target, t);
+    if (contrastRatio(adjusted, bg) >= minRatio) {
+      return normalizeHex(adjusted);
+    }
+  }
+  // Fallback to original if we could not meet the ratio
+  return color;
+}
+
+/* ---------------------- Image dominant color (internal) ---------------------- */
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = dataUrl;
+  });
+}
+
+async function dominantColorFromImage(dataUrl, { sampleSize = 48 } = {}) {
+  try {
+    const img = await loadImage(dataUrl);
+    const w = Math.max(1, Math.min(sampleSize, img.naturalWidth || img.width || sampleSize));
+    const h = Math.max(1, Math.min(sampleSize, img.naturalHeight || img.height || sampleSize));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    const { data } = ctx.getImageData(0, 0, w, h);
+
+    let rSum = 0, gSum = 0, bSum = 0, count = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3];
+      if (a < 16) continue; // skip very transparent
+      const r = data[i + 0];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      rSum += r;
+      gSum += g;
+      bSum += b;
+      count += 1;
+    }
+
+    if (!count) return null;
+    const r = Math.round(rSum / count);
+    const g = Math.round(gSum / count);
+    const b = Math.round(bSum / count);
+    return rgbToHex(r, g, b);
+  } catch {
+    return null;
+  }
+}
+
+/* ---------------------- PUBLIC auto-accent interfaces ---------------------- */
+
+// PUBLIC_INTERFACE
+export async function deriveThemeWithAutoAccent(baseTheme, candidateImageDataUrls = [], options = {}) {
+  /**
+   * Derives a new theme whose accent color is computed from the first available image.
+   * Uses an in-memory canvas to compute the average dominant color and validates
+   * contrast against the theme background per WCAG. Falls back to the original
+   * accent if any step fails.
+   *
+   * @param {object} baseTheme - Theme object from getTheme()
+   * @param {string[]} candidateImageDataUrls - ordered list of candidate images (data URLs); the first valid one is used
+   * @param {{ minContrastBg?: number }} options - tuning options (default minContrastBg=3.0)
+   * @returns {Promise<object>} - a cloned theme with possibly updated colors.accent
+   */
+  const minContrastBg = typeof options.minContrastBg === "number" ? options.minContrastBg : 3.0;
+
+  const clone = JSON.parse(JSON.stringify(baseTheme || {}));
+  const colors = clone.colors || {};
+  const bg = colors.background || "FFFFFF";
+  const originalAccent = colors.accent || "FFC107";
+
+  const firstImage = (Array.isArray(candidateImageDataUrls) ? candidateImageDataUrls : []).find(Boolean);
+  if (!firstImage) return clone; // nothing to do
+
+  // Extract dominant color
+  const dom = await dominantColorFromImage(firstImage);
+  if (!dom) return clone;
+
+  // Validate/adjust for contrast against background
+  const adjusted = adjustForContrast(dom, bg, minContrastBg);
+
+  // Ensure final check meets threshold, else fallback
+  if (contrastRatio(adjusted, bg) >= minContrastBg) {
+    colors.accent = normalizeHex(adjusted);
+  } else {
+    colors.accent = normalizeHex(originalAccent);
+  }
+
+  clone.colors = colors;
+  return clone;
 }
