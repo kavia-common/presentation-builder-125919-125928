@@ -187,44 +187,167 @@ function renderTwoColumn(_pptx, slide, data, theme) {
   });
 }
 
-// FLOWCHART: simple vertical flow from data.flow.steps (array of strings)
+/**
+ * FLOWCHART: advanced auto-layout with robust connectors.
+ * - If <= 5 nodes: vertical centered flow
+ * - If 6–8 nodes: 2-column simple grid with serpentine connectors
+ * Boxes use theme card shape with stroke/shadow; arrows use theme primary color.
+ */
 function renderFlowchart(_pptx, slide, data, theme) {
   const title = data?.title || "";
-  const steps = Array.isArray(data?.flow?.steps) ? data.flow.steps : (Array.isArray(data?.bullets) ? data.bullets : []);
+  const stepsRaw = Array.isArray(data?.flow?.steps) ? data.flow.steps : (Array.isArray(data?.bullets) ? data.bullets : []);
+  const steps = (stepsRaw || []).map((s) => String(s || "").replace(/\s+/g, " ").trim()).filter(Boolean);
 
+  // Title
   slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
 
-  const count = Math.max(1, steps.length);
-  const topY = 1.2;
-  const availableH = 4.0;
-  const boxH = Math.min(0.9, availableH / count - 0.1);
-  const boxW = 7.6;
-  const x = 1.2;
-  const lineColor = primaryColor(theme);
+  // Helper tokens
+  const spacing = {
+    mx: theme?.spacing?.pageMarginX ?? 0.5,
+    my: theme?.spacing?.pageMarginY ?? 0.5,
+    gutter: theme?.spacing?.gutter ?? 0.25,
+  };
+  const arrowColor = primaryColor(theme);
+  const arrowLine = { color: arrowColor, width: 2, endArrow: "triangle" }; // use end arrow on final segment
+  const arrowLineNoHead = { color: arrowColor, width: 2 };
 
-  for (let i = 0; i < steps.length; i++) {
-    const y = topY + i * (boxH + 0.2);
-    // Card background (rounded)
-    slide.addShape(theme.cards?.shape || "roundRect", {
-      x, y, w: boxW, h: boxH,
-      ...cardShapeOptions(theme)
-    });
-    slide.addText(steps[i], {
-      x: x + 0.2, y: y + 0.1, w: boxW - 0.4, h: boxH - 0.2,
-      ...bodyTextStyle(theme)
-    });
+  // Helpers
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const trunc = (s, n = 120) => (String(s || "").length > n ? String(s || "").slice(0, n - 1) + "…" : String(s || ""));
 
-    // Connector to next
-    if (i < steps.length - 1) {
-      slide.addShape("line", {
-        x: x + boxW / 2, y: y + boxH, w: 0, h: 0.15,
-        line: { color: lineColor, width: 1.5 }
-      });
-    }
+  function boxTextStyle(theme) {
+    const st = { ...bodyTextStyle(theme) };
+    // Tweak for better center fit in nodes
+    return { ...st, align: "center", valign: "middle" };
   }
 
-  if (steps.length === 0) {
+  function addBox(slide, { x, y, w, h, text }) {
+    // Card with theme-driven fill/line/shadow
+    slide.addShape(theme.cards?.shape || "roundRect", {
+      x, y, w, h,
+      ...cardShapeOptions(theme),
+    });
+    slide.addText(trunc(text), {
+      x: x + 0.15, y: y + 0.1, w: Math.max(0.1, w - 0.3), h: Math.max(0.1, h - 0.2),
+      ...boxTextStyle(theme),
+    });
+  }
+
+  function lineH(slide, { x, y, w, line }) {
+    slide.addShape("line", { x, y, w, h: 0, line });
+  }
+  function lineV(slide, { x, y, h, line }) {
+    slide.addShape("line", { x, y, w: 0, h, line });
+  }
+  function connectVertical(slide, a, b) {
+    // From bottom center of A to top center of B
+    const startX = a.x + a.w / 2;
+    const startY = a.y + a.h;
+    const endY = b.y;
+    const h = Math.max(0.05, endY - startY);
+    lineV(slide, { x: startX, y: startY, h, line: arrowLine });
+  }
+  function connectHorizontal(slide, a, b) {
+    // From center-right of A to center-left of B
+    const startX = a.x + a.w;
+    const y = a.y + a.h / 2;
+    const w = Math.max(0.05, b.x - startX);
+    lineH(slide, { x: startX, y, w, line: arrowLine });
+  }
+  function connectSerpentine(slide, a, b) {
+    // Multi-segment: down, horizontal, up/down depending on relative positions
+    // We'll create 2-3 segments and put arrowhead on the last one.
+    const midY = (a.y + a.h + b.y) / 2;
+
+    // Segment 1: vertical from bottom of A to mid
+    const x1 = a.x + a.w / 2;
+    const y1 = a.y + a.h;
+    const v1 = Math.max(0.05, midY - y1);
+    lineV(slide, { x: x1, y: y1, h: v1, line: arrowLineNoHead });
+
+    // Segment 2: horizontal from A center to B center (at midY)
+    const x2 = b.x + b.w / 2;
+    const w2 = x2 - x1;
+    lineH(slide, { x: x1, y: midY, w: w2, line: arrowLineNoHead });
+
+    // Segment 3: vertical from midY to top of B (arrow here)
+    const v3 = Math.max(0.05, b.y - midY);
+    lineV(slide, { x: x2, y: midY, h: v3, line: arrowLine });
+  }
+
+  // Layout selection
+  const n = steps.length;
+
+  if (n === 0) {
     slide.addText("No steps provided.", { x: 1.2, y: 1.8, w: 7.6, h: 0.6, ...captionTextStyle(theme) });
+    return;
+  }
+
+  if (n <= 5) {
+    // Vertical centered layout
+    const topY = 1.2; // below title
+    const bottomPad = spacing.my + 0.3;
+    const availableH = Math.max(1.5, SLIDE_HEIGHT - topY - bottomPad);
+
+    const vGap = clamp(availableH / (n * 4), 0.15, 0.35);
+    const boxH = clamp((availableH - vGap * (n - 1)) / n, 0.55, 1.0);
+    const contentW = SLIDE_WIDTH - 2 * spacing.mx - 0.8;
+    const boxW = clamp(contentW, 6.8, 8.4);
+    const x = (SLIDE_WIDTH - boxW) / 2;
+
+    const nodes = [];
+    for (let i = 0; i < n; i += 1) {
+      const y = topY + i * (boxH + vGap);
+      const node = { x, y, w: boxW, h: boxH };
+      nodes.push(node);
+      addBox(slide, { ...node, text: steps[i] });
+      if (i < n - 1) connectVertical(slide, node, { x, y: y + boxH + vGap, w: boxW, h: boxH }); // use target's top y
+    }
+  } else {
+    // 2-column grid with serpentine connectors (good for 6–8 steps)
+    const cols = 2;
+    const rows = Math.ceil(n / cols);
+
+    const topY = 1.2;
+    const bottomPad = spacing.my + 0.3;
+    const availableH = Math.max(2.0, SLIDE_HEIGHT - topY - bottomPad);
+
+    const vGap = clamp(availableH / (rows * 5), 0.15, 0.3);
+    const boxH = clamp((availableH - vGap * (rows - 1)) / rows, 0.5, 1.1);
+
+    const contentX = spacing.mx + 0.4;
+    const contentW = SLIDE_WIDTH - 2 * spacing.mx - 0.8;
+    const colW = (contentW - spacing.gutter) / cols;
+    const boxW = clamp(colW, 3.0, 4.6);
+
+    const xLeft = contentX + (colW - boxW) / 2;
+    const xRight = contentX + colW + spacing.gutter + (colW - boxW) / 2;
+
+    const nodes = [];
+    for (let r = 0; r < rows; r += 1) {
+      const y = topY + r * (boxH + vGap);
+      for (let c = 0; c < cols; c += 1) {
+        const i = r * cols + c;
+        if (i >= n) break;
+        const x = c === 0 ? xLeft : xRight;
+        const node = { x, y, w: boxW, h: boxH, row: r, col: c, idx: i };
+        nodes.push(node);
+        addBox(slide, { ...node, text: steps[i] });
+      }
+    }
+
+    // Connectors in reading order with serpentine path between rows
+    for (let i = 0; i < nodes.length - 1; i += 1) {
+      const a = nodes[i];
+      const b = nodes[i + 1];
+      if (a.row === b.row) {
+        // Same row -> horizontal
+        connectHorizontal(slide, a, b);
+      } else {
+        // Row change -> serpentine (multi-segment)
+        connectSerpentine(slide, a, b);
+      }
+    }
   }
 }
 
