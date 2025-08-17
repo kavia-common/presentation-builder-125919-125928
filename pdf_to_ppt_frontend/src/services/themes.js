@@ -362,7 +362,8 @@ function ensureContrastColorForBg(baseHex, theme, minRatio) {
 // PUBLIC_INTERFACE
 export function titleTextStyle(theme) {
   /** Returns pptx text style for slide titles with enforced contrast. */
-  const t = theme?.typography?.h1 || { fontSize: 28, bold: true, color: "000000" };
+  // Prefer the explicit 'title' token; fall back to 'h1' for older themes.
+  const t = theme?.typography?.title || theme?.typography?.h1 || { fontSize: 28, bold: true, color: "000000" };
   const contrasted = ensureContrastColorForBg(t.color || "000000", theme, 4.5); // titles: AA
   const fontSize = Math.max(30, t.fontSize || 30); // nudge titles a bit larger for readability
   return {

@@ -88,7 +88,7 @@ function renderTitle(_pptx, slide, data, theme) {
   });
 
   if (subtitle) {
-    const subStyle = { ...bodyTextStyle(theme), align: "center", color: theme.colors.muted };
+    const subStyle = { ...captionTextStyle(theme), align: "center" };
     slide.addText(subtitle, { x: 0.5, y: 3.1, w: 9, h: 0.7, ...subStyle });
   }
 }
@@ -192,11 +192,6 @@ function renderImageSide(_pptx, slide, data, theme, side = "right") {
 
   slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
 
-  slide.addShape("line", {
-    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
-  });
-
-  // Accent divider
   slide.addShape("line", {
     x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
   });
@@ -459,9 +454,8 @@ function renderSectionDivider(_pptx, slide, data, theme) {
   if (subtitle) {
     slide.addText(subtitle, {
       x: 0.5, y: 3.1, w: 9.0, h: 0.6,
-      ...bodyTextStyle(theme),
-      align: "center",
-      color: theme.colors.muted
+      ...captionTextStyle(theme),
+      align: "center"
     });
   }
 }
