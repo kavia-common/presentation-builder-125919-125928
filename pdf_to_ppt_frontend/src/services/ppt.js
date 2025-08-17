@@ -10,6 +10,31 @@ import { getTheme, slideOptionsForTheme, titleTextStyle, deriveThemeWithAutoAcce
 import { renderSlide, normalizeTemplateKey } from "./templates";
 
 /**
+ * Apply the theme background to a slide using pptxgenjs' current API while
+ * preserving backward compatibility with older props.
+ * This is necessary because some pptxgenjs versions expect slide.background = { color: 'RRGGBB' }
+ * instead of the legacy addSlide({ bkgd: 'RRGGBB' }).
+ * @param {object} slide - pptxgenjs slide instance
+ * @param {object} theme - theme object from getTheme()
+ */
+function applyBackgroundToSlide(slide, theme) {
+  // Ensure hex without '#'
+  const bg = theme?.colors?.background || "FFFFFF";
+  try {
+    // Preferred (pptxgenjs v3+)
+    // See: https://gitbrent.github.io/PptxGenJS/docs/api-slide.html#background
+    slide.background = { color: bg };
+  } catch (e) {
+    // Best-effort fallback: set fields directly if available
+    try { slide.bkgd = bg; } catch { /* ignore */ }
+    try { slide.background = bg; } catch { /* ignore */ }
+  }
+  // Instrumentation for verification
+  // eslint-disable-next-line no-console
+  console.log("[ThemeTrace] [applyBackgroundToSlide] Applied background to slide:", { bg, themeName: theme?.name });
+}
+
+/**
  * downloadBlob
  * Creates a temporary object URL and programmatically clicks an anchor to download the blob.
  * This is a robust fallback when pptx.writeFile may be blocked or unavailable in the environment.
@@ -68,6 +93,7 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
 
   // Title slide
   const titleSlide = pptx.addSlide(slideOptionsForTheme(theme));
+  applyBackgroundToSlide(titleSlide, theme);
   titleSlide.addText(fileNameTitle, {
     x: 0.5, y: 1.5, w: 9, h: 1,
     ...titleTextStyle(theme),
@@ -77,6 +103,7 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
 
   for (const s of slides) {
     const slide = pptx.addSlide(slideOptionsForTheme(theme));
+    applyBackgroundToSlide(slide, theme);
 
     // Prefer the IMAGE_CARD template semantics
     const data = {
@@ -151,6 +178,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
   // Title slide (use doc title if provided; otherwise use fileNameTitle)
   const deckTitle = outline.title || fileNameTitle;
   const titleSlide = pptx.addSlide(slideOptionsForTheme(theme));
+  applyBackgroundToSlide(titleSlide, theme);
   titleSlide.addText(deckTitle, {
     x: 0.5, y: 1.5, w: 9, h: 1,
     ...titleTextStyle(theme),
@@ -161,6 +189,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
 
   for (const s of outline.slides) {
     const slide = pptx.addSlide(slideOptionsForTheme(theme));
+    applyBackgroundToSlide(slide, theme);
 
     // Determine images: prefer slide.imagePages, fallback to slide.sources[].page
     const images = pickImages(s, imagesByPage, 2);
