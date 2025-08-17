@@ -1,3 +1,8 @@
+---
+**Created by Kavia**
+
+---
+
 # pdf_to_ppt_frontend Architecture
 
 This document describes the architecture of the pdf_to_ppt_frontend container. It covers the overall structure, core modules and their responsibilities, key design patterns, the data and theme flows, the template/rendering system, and how the system supports extensibility for features such as themes, tables, and nested bullets.
