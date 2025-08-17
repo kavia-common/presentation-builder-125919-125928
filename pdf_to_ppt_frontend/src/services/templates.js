@@ -16,9 +16,41 @@ import { slideOptionsForTheme, titleTextStyle, bodyTextStyle, captionTextStyle, 
 const SLIDE_WIDTH = 10;  // standard widescreen: 10" x 5.625"
 const SLIDE_HEIGHT = 5.625;
 
-// Utility to join bullets
-function bulletsText(bullets = []) {
-  return (Array.isArray(bullets) ? bullets : []).map(b => `• ${String(b)}`).join("\n");
+// Bullet helpers (native PPT bullets, no manual "•" prefix)
+/**
+ * Turns an array of bullet strings into multi-paragraph text for pptxgenjs.
+ * pptxgenjs will bullet each paragraph when options.bullet === true.
+ */
+function bulletListText(bullets = []) {
+  return (Array.isArray(bullets) ? bullets : [])
+    .map(b => String(b ?? "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Build bullet options from theme tokens.
+ * Applies bulletColor, bulletSize, and indentLevel via native PPT list formatting.
+ * Also sets "indent" mirror for broader compatibility across pptxgenjs versions.
+ */
+function bulletListOptions(theme) {
+  const b = theme?.bullets || {};
+  const color = b.bulletColor || theme?.typography?.body?.color || "000000";
+  const size = typeof b.bulletSize === "number" ? b.bulletSize : undefined;
+  const indentIn = typeof b.indentLevel === "number" ? b.indentLevel : 0.5;
+
+  const opts = {
+    bullet: true,
+    bulletColor: color
+  };
+  if (size) opts.bulletSize = size;
+  if (indentIn !== undefined && indentIn !== null) {
+    // Some pptxgenjs versions use indent, others support indentLevel for list level vs. paragraph indent.
+    // Provide both for best compatibility; non-recognized props are ignored by the lib.
+    opts.indentLevel = indentIn;
+    opts.indent = indentIn;
+  }
+  return opts;
 }
 
 // PUBLIC_INTERFACE
@@ -114,9 +146,10 @@ function renderTitleBullets(_pptx, slide, data, theme) {
   });
 
   if (bullets.length) {
-    slide.addText(bulletsText(bullets), {
+    slide.addText(bulletListText(bullets), {
       x: 0.8, y: 1.2, w: 8.4, h: 4.0,
-      ...bodyTextStyle(theme)
+      ...bodyTextStyle(theme),
+      ...bulletListOptions(theme)
     });
   }
 }
@@ -132,8 +165,10 @@ function renderBullets(_pptx, slide, data, theme) {
     y += 0.8;
   }
 
-  slide.addText(bulletsText(bullets), {
-    x: 0.8, y, w: 8.2, h: 4.5, ...bodyTextStyle(theme)
+  slide.addText(bulletListText(bullets), {
+    x: 0.8, y, w: 8.2, h: 4.5,
+    ...bodyTextStyle(theme),
+    ...bulletListOptions(theme)
   });
 }
 
@@ -203,7 +238,11 @@ function renderImageSide(_pptx, slide, data, theme, side = "right") {
   }
 
   if (bullets.length) {
-    slide.addText(bulletsText(bullets), { ...textBox, ...bodyTextStyle(theme) });
+    slide.addText(bulletListText(bullets), {
+      ...textBox,
+      ...bodyTextStyle(theme),
+      ...bulletListOptions(theme)
+    });
   }
 }
 
@@ -215,12 +254,16 @@ function renderTwoColumn(_pptx, slide, data, theme) {
 
   slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
 
-  slide.addText(bulletsText(col1), {
-    x: 0.8, y: 1.2, w: 4.2, h: 4.0, ...bodyTextStyle(theme)
+  slide.addText(bulletListText(col1), {
+    x: 0.8, y: 1.2, w: 4.2, h: 4.0,
+    ...bodyTextStyle(theme),
+    ...bulletListOptions(theme)
   });
 
-  slide.addText(bulletsText(col2), {
-    x: 5.2, y: 1.2, w: 4.2, h: 4.0, ...bodyTextStyle(theme)
+  slide.addText(bulletListText(col2), {
+    x: 5.2, y: 1.2, w: 4.2, h: 4.0,
+    ...bodyTextStyle(theme),
+    ...bulletListOptions(theme)
   });
 }
 
@@ -425,8 +468,10 @@ function renderComparison(_pptx, slide, data, theme) {
   slide.addText(left.title || "Left", {
     x: 0.8, y: 1.3, w: 4.0, h: 0.5, ...bodyTextStyle(theme), bold: true
   });
-  slide.addText(bulletsText(left.bullets || []), {
-    x: 0.8, y: 1.9, w: 4.0, h: 2.9, ...bodyTextStyle(theme)
+  slide.addText(bulletListText(left.bullets || []), {
+    x: 0.8, y: 1.9, w: 4.0, h: 2.9,
+    ...bodyTextStyle(theme),
+    ...bulletListOptions(theme)
   });
 
   // Right card
@@ -436,8 +481,10 @@ function renderComparison(_pptx, slide, data, theme) {
   slide.addText(right.title || "Right", {
     x: 5.2, y: 1.3, w: 4.0, h: 0.5, ...bodyTextStyle(theme), bold: true
   });
-  slide.addText(bulletsText(right.bullets || []), {
-    x: 5.2, y: 1.9, w: 4.0, h: 2.9, ...bodyTextStyle(theme)
+  slide.addText(bulletListText(right.bullets || []), {
+    x: 5.2, y: 1.9, w: 4.0, h: 2.9,
+    ...bodyTextStyle(theme),
+    ...bulletListOptions(theme)
   });
 }
 
@@ -479,8 +526,10 @@ function renderChart(_pptx, slide, data, theme) {
       sizing: { type: "contain", w: 8.2, h: 3.8 }
     });
   } else if (bullets.length) {
-    slide.addText(bulletsText(bullets), {
-      x: 0.8, y: 1.2, w: 8.4, h: 3.8, ...bodyTextStyle(theme)
+    slide.addText(bulletListText(bullets), {
+      x: 0.8, y: 1.2, w: 8.4, h: 3.8,
+      ...bodyTextStyle(theme),
+      ...bulletListOptions(theme)
     });
   } else {
     slide.addShape(theme.cards?.shape || "roundRect", {
