@@ -219,24 +219,26 @@ function buildCoralTheme() {
 /** Emerald (fresh green) theme. */
 function buildEmeraldTheme() {
   const colors = {
-    primary: normalizeHex("#065F46"),        // emerald-800
-    secondary: normalizeHex("#047857"),      // emerald-700
-    accent: normalizeHex("#10B981"),         // emerald-500
+    primary: normalizeHex("#065F46"),        // emerald-800 (brand)
+    secondary: normalizeHex("#059669"),      // emerald-600 (supporting)
+    accent: normalizeHex("#10B981"),         // emerald-500 (vivid accent)
     background: normalizeHex("#F0FDF4"),     // emerald-50
-    backgroundSoft: normalizeHex("#ECFDF5"), // emerald-50 alt
+    backgroundSoft: normalizeHex("#ECFDF5"), // emerald-50 alt (slightly cooler)
     text: normalizeHex("#052E16"),           // emerald-950
-    muted: normalizeHex("#475569"),          // slate-600
+    muted: normalizeHex("#6B7280"),          // gray-500 (neutral muted for captions)
     border: normalizeHex("#A7F3D0"),         // emerald-200
     white: normalizeHex("#FFFFFF"),
     black: normalizeHex("#000000")
   };
 
+  // Align scale with azure for cross-theme consistency; per-style enforcement will
+  // still adjust sizes/contrast as needed in titleTextStyle/bodyTextStyle.
   const typography = {
-    title: { fontSize: 32, bold: true, color: colors.text },
-    h1: { fontSize: 28, bold: true, color: colors.text },
+    title: { fontSize: 34, bold: true, color: colors.text },
+    h1: { fontSize: 30, bold: true, color: colors.text },
     h2: { fontSize: 22, bold: true, color: colors.text },
-    body: { fontSize: 16, color: colors.text },
-    caption: { fontSize: 12, color: colors.muted }
+    body: { fontSize: 18, color: colors.text },
+    caption: { fontSize: 13, color: colors.muted }
   };
 
   const spacing = { pageMarginX: 0.5, pageMarginY: 0.5, gutter: 0.25 };
@@ -244,7 +246,7 @@ function buildEmeraldTheme() {
   const cards = {
     fill: { color: colors.white },
     line: { color: colors.border, width: 1 },
-    shadow: { type: "outer", opacity: 0.14, blur: 3, offset: 1 },
+    shadow: { type: "outer", opacity: 0.16, blur: 3, offset: 1 }, // subtle lift on pale green bg
     shape: "roundRect"
   };
 
