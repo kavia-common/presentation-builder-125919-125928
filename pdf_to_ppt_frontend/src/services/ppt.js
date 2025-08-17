@@ -53,8 +53,15 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
 
   const themeSelectionName = (options && options.themeName) ? String(options.themeName) : "azure";
   const baseTheme = getTheme(themeSelectionName);
+  console.log('[ThemeTrace] [generatePptx] baseTheme selected:', themeSelectionName, baseTheme);
   const candidateImages = (Array.isArray(slides) ? slides.map(s => s?.imageDataUrl).filter(Boolean) : []);
+  console.log('[ThemeTrace] [generatePptx] candidateImages count:', candidateImages.length);
   const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
+  console.log(
+    '[ThemeTrace] [generatePptx] derived theme (accent may be auto-tuned). Accent changed?:',
+    (theme?.colors?.accent !== baseTheme?.colors?.accent),
+    { baseAccent: baseTheme?.colors?.accent, derivedAccent: theme?.colors?.accent }
+  );
   const pptx = new PptxGenJS();
 
   // Title slide
@@ -76,6 +83,7 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
       caption: s.caption || ""
     };
     // Render using template engine
+    console.log('[ThemeTrace] [generatePptx] Rendering slide with template IMAGE_CARD and theme:', theme?.name, { title: data.title, hasImage: !!data.image, colors: theme?.colors });
     renderSlide(pptx, slide, "IMAGE_CARD", data, theme);
   }
 
@@ -122,10 +130,17 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
   // Enforce selected theme (override outline.theme) if provided
   const enforcedThemeName = options?.themeName ? String(options.themeName) : (outline.theme || "azure");
   const baseTheme = getTheme(enforcedThemeName);
+  console.log('[ThemeTrace] [generatePptxFromOutline] enforcedThemeName:', enforcedThemeName, 'outline.theme:', outline?.theme, baseTheme);
 
   // Use first available image per slide to derive accent
   const candidateImages = (Array.isArray(outline.slides) ? outline.slides.map(s => pickFirstImage(s, imagesByPage)).filter(Boolean) : []);
+  console.log('[ThemeTrace] [generatePptxFromOutline] candidateImages count:', candidateImages.length);
   const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
+  console.log(
+    '[ThemeTrace] [generatePptxFromOutline] derived theme (accent may be auto-tuned). Accent changed?:',
+    (theme?.colors?.accent !== baseTheme?.colors?.accent),
+    { baseAccent: baseTheme?.colors?.accent, derivedAccent: theme?.colors?.accent }
+  );
   const pptx = new PptxGenJS();
 
   // Title slide (use doc title if provided; otherwise use fileNameTitle)
@@ -137,6 +152,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
     align: "center",
     fontSize: Math.max(32, (theme.typography?.title?.fontSize || 32))
   });
+  console.log('[ThemeTrace] [generatePptxFromOutline] Title slide applied with theme:', { name: theme?.name, colors: theme?.colors, titleStyle: theme?.typography?.title });
 
   for (const s of outline.slides) {
     const slide = pptx.addSlide(slideOptionsForTheme(theme));
@@ -171,6 +187,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
     };
 
     const templateKey = inferTemplateKey(s, data);
+    console.log('[ThemeTrace] [generatePptxFromOutline] Rendering slide with template:', templateKey, { title: data.title, imagesCount: (data.images || []).length, colors: theme?.colors });
     renderSlide(pptx, slide, templateKey, data, theme);
 
     // Optional notes

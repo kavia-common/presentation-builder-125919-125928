@@ -67,7 +67,9 @@ export function chooseTemplateRenderer(templateKey) {
 // PUBLIC_INTERFACE
 export function renderSlide(pptx, slide, templateKey, data, theme) {
   /** Dispatch rendering to the proper template function. */
-  const renderer = chooseTemplateRenderer(templateKey);
+  const normalized = normalizeTemplateKey(templateKey);
+  console.log('[ThemeTrace] [templates.renderSlide] dispatch', { requested: templateKey, normalized, themeName: theme?.name, colors: theme?.colors });
+  const renderer = chooseTemplateRenderer(normalized);
   return renderer(pptx, slide, data, theme);
 }
 

@@ -30,6 +30,8 @@ import {
 export default function ThemePreview({ name = "azure", polished = false }) {
   const theme = getTheme(name);
   const info = getThemeInfo(name);
+  console.log('[ThemeTrace] ThemePreview received name:', name, 'polished:', polished);
+  console.log('[ThemeTrace] ThemePreview resolved theme tokens:', theme);
 
   // Helpers: convert PPT hex (no #) to CSS hex (#RRGGBB)
   const h = (hex) => `#${String(hex || "000000")}`;

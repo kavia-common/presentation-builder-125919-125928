@@ -52,6 +52,15 @@ function App() {
     }
   }, []);
 
+  // Debug: track themeName and polishedMode changes
+  useEffect(() => {
+    console.log('[ThemeTrace] themeName state updated:', themeName);
+  }, [themeName]);
+
+  useEffect(() => {
+    console.log('[ThemeTrace] polishedMode state updated:', polishedMode);
+  }, [polishedMode]);
+
   const apiKeyAvailable = !!getOpenAIKey();
 
   // Busy indicator shared across flows: prevents cross-triggering UI actions.
@@ -163,6 +172,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
       if (polishedMode && plan && !plan.theme) {
         plan.theme = themeName;
       }
+      console.log('[ThemeTrace] planSlidesWithOpenAI -> outline.theme:', plan?.theme, 'polishedMode:', polishedMode, 'selected themeName:', themeName);
       setOutline(plan);
 
       // 4) Preload chat with the proposed outline for user review
@@ -205,6 +215,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
         setPptBuilding(true);
         setPptReady(false);
         try {
+          console.log('[ThemeTrace] Calling generatePptx (legacy) with themeName:', themeName);
           await generatePptx(selectedSlides, 'Generated Presentation', { themeName });
           lastBuildSlidesRef.current = selectedSlides;
           setPptReady(true);
@@ -234,6 +245,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
         };
         // Build page metadata for captions from analysis
         const pageMeta = Object.fromEntries(analysis.map(a => [a.page, { title: a.title || "", caption: a.caption || "" }]));
+        console.log('[ThemeTrace] Calling generatePptxFromOutline (minimal outline)', { enforcedThemeName: themeName, outlineTheme: minimalOutline?.theme });
         await generatePptxFromOutline(minimalOutline, imagesByPage, 'Generated Presentation', { themeName, pageMeta });
         lastBuildSlidesRef.current = minimalOutline.slides || [];
         setPptReady(true);
@@ -276,6 +288,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
 
       // PUBLIC_INTERFACE
       const pageMeta = Object.fromEntries(analysis.map(a => [a.page, { title: a.title || "", caption: a.caption || "" }]));
+      console.log('[ThemeTrace] Calling generatePptxFromOutline (refined)', { enforcedThemeName: themeName, outlineTheme: refined?.theme });
       await generatePptxFromOutline(refined, imagesByPage, 'Generated Presentation', { themeName, pageMeta });
       lastBuildSlidesRef.current = refined?.slides || [];
       setPptReady(true);
@@ -375,7 +388,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
                 id="theme-select"
                 className="select"
                 value={themeName}
-                onChange={(e) => setThemeName(e.target.value)}
+                onChange={(e) => { const v = e.target.value; console.log('[ThemeTrace] Theme select changed:', v); setThemeName(v); }}
                 disabled={isBusy}
               >
                 {themeOptions.map((t) => (
