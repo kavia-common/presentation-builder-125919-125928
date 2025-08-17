@@ -63,19 +63,25 @@ function App() {
 
   const apiKeyAvailable = !!getOpenAIKey();
 
-  // QA/Debug: allow locking theme tokens by disabling auto accent derivation from URL (?autoAccent=false)
-  const autoAccent = useMemo(() => {
+  // Auto Accent control
+  // Initialize from URL (?autoAccent=false|0|no|off to disable), but allow runtime toggling via UI
+  const [autoAccent, setAutoAccent] = useState(true);
+  useEffect(() => {
     try {
       const qs = new URLSearchParams(window.location.search);
       const val = qs.get('autoAccent');
-      if (val == null) return true; // default behavior unchanged
-      return !/^(0|false|no|off)$/i.test(String(val));
+      if (val == null) {
+        setAutoAccent(true); // default behavior unchanged
+      } else {
+        const enabled = !/^(0|false|no|off)$/i.test(String(val));
+        setAutoAccent(enabled);
+      }
     } catch {
-      return true;
+      setAutoAccent(true);
     }
   }, []);
   useEffect(() => {
-    console.log('[ThemeTrace] autoAccent flag (from URL):', autoAccent, 'URL:', typeof window !== 'undefined' ? window.location.search : '');
+    console.log('[ThemeTrace] autoAccent flag (URL/init or UI):', autoAccent, 'URL:', typeof window !== 'undefined' ? window.location.search : '');
   }, [autoAccent]);
 
   // Busy indicator shared across flows: prevents cross-triggering UI actions.
@@ -385,7 +391,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
             </div>
           )}
 
-          {/* Options: Polished Mode + Theme */}
+          {/* Options: Polished Mode + Theme + Auto Accent */}
           <div className="options">
             <label className="toggle">
               <input
@@ -412,10 +418,22 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
               </select>
             </div>
 
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={autoAccent}
+                onChange={(e) => setAutoAccent(e.target.checked)}
+                disabled={isBusy}
+              />
+              Auto Accent
+            </label>
+
             <div className="small">
               {polishedMode
                 ? `Using "${themeName}" with template-aware rendering.`
                 : 'Polished Mode off: simple generation is used if no outline.'}
+              {' '}
+              {autoAccent ? 'Accent: Auto from images.' : 'Accent: Locked to theme (strict).'}
             </div>
           </div>
 
