@@ -84,7 +84,7 @@ function renderTitle(_pptx, slide, data, theme) {
   // Accent divider under the title for visual emphasis
   slide.addShape("line", {
     x: 2.0, y: 2.9, w: 6.0, h: 0,
-    line: { color: (theme?.colors?.accent || "FFC107"), width: 3 }
+    line: { color: accentColor(theme), width: 3 }
   });
 
   if (subtitle) {
@@ -108,7 +108,7 @@ function renderTitleBullets(_pptx, slide, data, theme) {
 
   // Accent divider
   slide.addShape("line", {
-    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
+    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: accentColor(theme), width: 2 }
   });
 
   if (bullets.length) {
