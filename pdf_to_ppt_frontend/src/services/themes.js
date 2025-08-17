@@ -36,11 +36,11 @@ function buildAzureTheme() {
   };
 
   const typography = {
-    title: { fontSize: 32, bold: true, color: colors.text },
-    h1: { fontSize: 28, bold: true, color: colors.text },
+    title: { fontSize: 34, bold: true, color: colors.text },
+    h1: { fontSize: 30, bold: true, color: colors.text },
     h2: { fontSize: 22, bold: true, color: colors.text },
-    body: { fontSize: 16, color: colors.text },
-    caption: { fontSize: 12, color: colors.muted }
+    body: { fontSize: 18, color: colors.text },
+    caption: { fontSize: 13, color: colors.muted }
   };
 
   const spacing = {
@@ -88,11 +88,11 @@ function buildMidnightTheme() {
   };
 
   const typography = {
-    title: { fontSize: 34, bold: true, color: colors.text },
-    h1: { fontSize: 30, bold: true, color: colors.text },
+    title: { fontSize: 36, bold: true, color: colors.text },
+    h1: { fontSize: 32, bold: true, color: colors.text },
     h2: { fontSize: 22, bold: true, color: colors.text },
-    body: { fontSize: 16, color: colors.text },
-    caption: { fontSize: 12, color: colors.muted }
+    body: { fontSize: 18, color: colors.text },
+    caption: { fontSize: 13, color: colors.muted }
   };
 
   const spacing = { pageMarginX: 0.5, pageMarginY: 0.5, gutter: 0.3 };
@@ -350,34 +350,53 @@ export function slideOptionsForTheme(theme) {
   };
 }
 
+/**
+ * Internal helper: ensure minimum contrast for text against the current background.
+ * Uses adjustForContrast with a configurable minimum ratio.
+ */
+function ensureContrastColorForBg(baseHex, theme, minRatio) {
+  const bg = theme?.colors?.background || "FFFFFF";
+  return adjustForContrast(baseHex || "000000", bg, typeof minRatio === "number" ? minRatio : 4.5);
+}
+
 // PUBLIC_INTERFACE
 export function titleTextStyle(theme) {
-  /** Returns pptx text style for slide titles. */
+  /** Returns pptx text style for slide titles with enforced contrast. */
   const t = theme?.typography?.h1 || { fontSize: 28, bold: true, color: "000000" };
+  const contrasted = ensureContrastColorForBg(t.color || "000000", theme, 4.5); // titles: AA
+  const fontSize = Math.max(30, t.fontSize || 30); // nudge titles a bit larger for readability
   return {
-    fontSize: t.fontSize,
+    fontSize,
     bold: !!t.bold,
-    color: t.color || "000000"
+    color: contrasted,
+    // subtle shadow to improve readability on light/detailed backgrounds
+    shadow: { type: "outer", color: "000000", opacity: 0.18, blur: 1.2, offset: 0.4 }
   };
 }
 
 // PUBLIC_INTERFACE
 export function bodyTextStyle(theme) {
-  /** Returns pptx text style for body text. */
+  /** Returns pptx text style for body text with enforced high contrast. */
   const t = theme?.typography?.body || { fontSize: 16, color: "000000" };
+  // Aim for AAA-like contrast for normal-size text
+  const contrasted = ensureContrastColorForBg(t.color || "000000", theme, 7.0);
+  const fontSize = Math.max(18, t.fontSize || 18); // bump to 18 for better legibility
   return {
-    fontSize: t.fontSize,
-    color: t.color || "000000"
+    fontSize,
+    color: contrasted
   };
 }
 
 // PUBLIC_INTERFACE
 export function captionTextStyle(theme) {
-  /** Returns pptx text style for captions. */
+  /** Returns pptx text style for captions with enforced contrast. */
   const t = theme?.typography?.caption || { fontSize: 12, color: "666666" };
+  // Captions can be slightly lower contrast but still strong
+  const contrasted = ensureContrastColorForBg(t.color || "666666", theme, 6.0);
+  const fontSize = Math.max(13, t.fontSize || 13);
   return {
-    fontSize: t.fontSize,
-    color: t.color || "666666",
+    fontSize,
+    color: contrasted,
     italic: true
   };
 }
