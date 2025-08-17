@@ -63,6 +63,21 @@ function App() {
 
   const apiKeyAvailable = !!getOpenAIKey();
 
+  // QA/Debug: allow locking theme tokens by disabling auto accent derivation from URL (?autoAccent=false)
+  const autoAccent = useMemo(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      const val = qs.get('autoAccent');
+      if (val == null) return true; // default behavior unchanged
+      return !/^(0|false|no|off)$/i.test(String(val));
+    } catch {
+      return true;
+    }
+  }, []);
+  useEffect(() => {
+    console.log('[ThemeTrace] autoAccent flag (from URL):', autoAccent, 'URL:', typeof window !== 'undefined' ? window.location.search : '');
+  }, [autoAccent]);
+
   // Busy indicator shared across flows: prevents cross-triggering UI actions.
   const isBusy = analyzing || pptBuilding;
 
@@ -215,8 +230,8 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
         setPptBuilding(true);
         setPptReady(false);
         try {
-          console.log('[ThemeTrace] Calling generatePptx (legacy) with themeName:', themeName);
-          await generatePptx(selectedSlides, 'Generated Presentation', { themeName });
+          console.log('[ThemeTrace] Calling generatePptx (legacy) with themeName:', themeName, 'autoAccent:', autoAccent);
+          await generatePptx(selectedSlides, 'Generated Presentation', { themeName, autoAccent });
           lastBuildSlidesRef.current = selectedSlides;
           setPptReady(true);
         } catch (e) {
@@ -245,8 +260,8 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
         };
         // Build page metadata for captions from analysis
         const pageMeta = Object.fromEntries(analysis.map(a => [a.page, { title: a.title || "", caption: a.caption || "" }]));
-        console.log('[ThemeTrace] Calling generatePptxFromOutline (minimal outline)', { enforcedThemeName: themeName, outlineTheme: minimalOutline?.theme });
-        await generatePptxFromOutline(minimalOutline, imagesByPage, 'Generated Presentation', { themeName, pageMeta });
+        console.log('[ThemeTrace] Calling generatePptxFromOutline (minimal outline)', { enforcedThemeName: themeName, outlineTheme: minimalOutline?.theme, autoAccent });
+        await generatePptxFromOutline(minimalOutline, imagesByPage, 'Generated Presentation', { themeName, pageMeta, autoAccent });
         lastBuildSlidesRef.current = minimalOutline.slides || [];
         setPptReady(true);
         setOutline(prev => prev && prev.slides?.length ? prev : minimalOutline);
@@ -288,8 +303,8 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
 
       // PUBLIC_INTERFACE
       const pageMeta = Object.fromEntries(analysis.map(a => [a.page, { title: a.title || "", caption: a.caption || "" }]));
-      console.log('[ThemeTrace] Calling generatePptxFromOutline (refined)', { enforcedThemeName: themeName, outlineTheme: refined?.theme });
-      await generatePptxFromOutline(refined, imagesByPage, 'Generated Presentation', { themeName, pageMeta });
+      console.log('[ThemeTrace] Calling generatePptxFromOutline (refined)', { enforcedThemeName: themeName, outlineTheme: refined?.theme, autoAccent });
+      await generatePptxFromOutline(refined, imagesByPage, 'Generated Presentation', { themeName, pageMeta, autoAccent });
       lastBuildSlidesRef.current = refined?.slides || [];
       setPptReady(true);
 

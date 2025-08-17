@@ -602,9 +602,11 @@ export async function deriveThemeWithAutoAccent(baseTheme, candidateImageDataUrl
    * contrast against the theme background per WCAG. Falls back to the original
    * accent if any step fails.
    *
+   * When options.autoAccent === false, this function returns the baseTheme clone unchanged.
+   *
    * @param {object} baseTheme - Theme object from getTheme()
    * @param {string[]} candidateImageDataUrls - ordered list of candidate images (data URLs); the first valid one is used
-   * @param {{ minContrastBg?: number }} options - tuning options (default minContrastBg=3.0)
+   * @param {{ minContrastBg?: number, autoAccent?: boolean }} options - tuning options (default minContrastBg=3.0, autoAccent=true)
    * @returns {Promise<object>} - a cloned theme with possibly updated colors.accent
    */
   const minContrastBg = typeof options.minContrastBg === "number" ? options.minContrastBg : 3.0;
@@ -613,6 +615,11 @@ export async function deriveThemeWithAutoAccent(baseTheme, candidateImageDataUrl
   const colors = clone.colors || {};
   const bg = colors.background || "FFFFFF";
   const originalAccent = colors.accent || "FFC107";
+
+  // Allow callers to disable auto-accent globally
+  if (options?.autoAccent === false) {
+    return clone;
+  }
 
   const firstImage = (Array.isArray(candidateImageDataUrls) ? candidateImageDataUrls : []).find(Boolean);
   if (!firstImage) return clone; // nothing to do

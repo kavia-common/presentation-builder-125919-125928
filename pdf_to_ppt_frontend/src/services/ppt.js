@@ -32,31 +32,33 @@ function downloadBlob(blob, fileName) {
   }
 }
 
-// PUBLIC_INTERFACE
+ // PUBLIC_INTERFACE
 /**
  * generatePptx
  * Creates a PPTX file with one slide per selected item and triggers a download.
  * Backward-compatible simple renderer (image-focused), now styled with default theme.
  * @param {Array<{ imageDataUrl: string, title?: string, caption?: string }>} slides
  * @param {string} fileNameTitle
+ * @param {{ themeName?: string, autoAccent?: boolean }} options - options.themeName selects the theme; options.autoAccent (default true) controls whether to auto-tune accent from images.
  * @returns {Promise<void>}
  */
 export async function generatePptx(slides, fileNameTitle = "Presentation", options = {}) {
   /**
    * @param {Array<{ imageDataUrl: string, title?: string, caption?: string }>} slides
    * @param {string} fileNameTitle
-   * @param {{ themeName?: string }} options - optional theme selector; defaults to "azure"
+   * @param {{ themeName?: string, autoAccent?: boolean }} options - optional theme selector; defaults to "azure"; autoAccent true by default
    */
   if (!Array.isArray(slides) || slides.length === 0) {
     throw new Error("No slides provided to generatePptx.");
   }
 
   const themeSelectionName = (options && options.themeName) ? String(options.themeName) : "azure";
+  const autoAccent = options?.autoAccent !== false; // default true
   const baseTheme = getTheme(themeSelectionName);
-  console.log('[ThemeTrace] [generatePptx] baseTheme selected:', themeSelectionName, baseTheme);
+  console.log('[ThemeTrace] [generatePptx] baseTheme selected:', themeSelectionName, baseTheme, 'autoAccent:', autoAccent);
   const candidateImages = (Array.isArray(slides) ? slides.map(s => s?.imageDataUrl).filter(Boolean) : []);
   console.log('[ThemeTrace] [generatePptx] candidateImages count:', candidateImages.length);
-  const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
+  const theme = autoAccent ? await deriveThemeWithAutoAccent(baseTheme, candidateImages, { autoAccent }) : baseTheme;
   console.log(
     '[ThemeTrace] [generatePptx] derived theme (accent may be auto-tuned). Accent changed?:',
     (theme?.colors?.accent !== baseTheme?.colors?.accent),
@@ -103,7 +105,7 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
   }
 }
 
-// PUBLIC_INTERFACE
+ // PUBLIC_INTERFACE
 /**
  * generatePptxFromOutline
  * Creates a PPTX from a structured outline with titles, bullets, images and template/theme hints.
@@ -115,6 +117,7 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
  * @param {{theme?: string, title?: string, slides:Array<{template?: string, title:string, bullets?:string[], imagePages?:number[], notes?:string, subtitle?:string, flow?:{steps?:string[]}, left?:{title?:string, bullets?:string[]}, right?:{title?:string, bullets?:string[]}}>} outline
  * @param {Record<number, string>} imagesByPage - map of pageNumber -> image dataUrl
  * @param {string} fileNameTitle
+ * @param {{ themeName?: string, pageMeta?: Record<number,{ title?: string, caption?: string }>, autoAccent?: boolean }} options
  * @returns {Promise<void>}
  */
 export async function generatePptxFromOutline(outline, imagesByPage, fileNameTitle = "Presentation", options = {}) {
@@ -122,6 +125,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
    * options:
    *  - themeName?: string           // Enforce selected theme regardless of outline.theme
    *  - pageMeta?: Record<number,{ title?: string, caption?: string }>
+   *  - autoAccent?: boolean         // default true; when false, do not auto-derive accent from images
    */
   if (!outline || !Array.isArray(outline.slides) || outline.slides.length === 0) {
     throw new Error("Outline is empty. Nothing to generate.");
@@ -129,13 +133,14 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
 
   // Enforce selected theme (override outline.theme) if provided
   const enforcedThemeName = options?.themeName ? String(options.themeName) : (outline.theme || "azure");
+  const autoAccent = options?.autoAccent !== false; // default true
   const baseTheme = getTheme(enforcedThemeName);
-  console.log('[ThemeTrace] [generatePptxFromOutline] enforcedThemeName:', enforcedThemeName, 'outline.theme:', outline?.theme, baseTheme);
+  console.log('[ThemeTrace] [generatePptxFromOutline] enforcedThemeName:', enforcedThemeName, 'outline.theme:', outline?.theme, baseTheme, 'autoAccent:', autoAccent);
 
   // Use first available image per slide to derive accent
   const candidateImages = (Array.isArray(outline.slides) ? outline.slides.map(s => pickFirstImage(s, imagesByPage)).filter(Boolean) : []);
   console.log('[ThemeTrace] [generatePptxFromOutline] candidateImages count:', candidateImages.length);
-  const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
+  const theme = autoAccent ? await deriveThemeWithAutoAccent(baseTheme, candidateImages, { autoAccent }) : baseTheme;
   console.log(
     '[ThemeTrace] [generatePptxFromOutline] derived theme (accent may be auto-tuned). Accent changed?:',
     (theme?.colors?.accent !== baseTheme?.colors?.accent),
