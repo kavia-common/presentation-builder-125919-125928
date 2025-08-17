@@ -6,6 +6,7 @@ import { generatePptxFromOutline, generatePptx } from './services/ppt';
 import { chatWithOpenAI, analyzeImageWithOpenAI, planSlidesWithOpenAI, refineSlidesWithOpenAI, formatOutlineForChat } from './services/openaiClient';
 import { getOpenAIKey } from './config/env';
 import { listThemes } from './services/themes';
+import ThemePreview from './components/ThemePreview';
 
 /**
  * App component
@@ -389,6 +390,8 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
                 : 'Polished Mode off: simple generation is used if no outline.'}
             </div>
           </div>
+
+          <ThemePreview name={themeName} polished={polishedMode} />
 
           <div
             className={`upload ${dragOver ? 'dragover' : ''}`}

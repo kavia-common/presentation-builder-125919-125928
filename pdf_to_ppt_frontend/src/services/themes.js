@@ -322,6 +322,16 @@ const THEMES = {
   minimal: buildMinimalTheme()
 };
 
+// Brief human-friendly descriptions for theme previews
+const THEME_DESCRIPTIONS = {
+  azure: "Bright, modern, and crisp. Light background with blue accents suited for business decks.",
+  midnight: "High-contrast dark theme with neon-like accents. Ideal for screens and dramatic visuals.",
+  slate: "Cool and subtle light theme with neutral tones for professional reports.",
+  coral: "Warm and friendly theme with orange accents. Great for storytelling and highlights.",
+  emerald: "Fresh green palette with calm backgrounds. Suitable for eco or growth narratives.",
+  minimal: "Monochrome minimalism with strong typographic focus and restrained accents."
+};
+
 // PUBLIC_INTERFACE
 export function listThemes() {
   /** Returns the list of available theme names. */
@@ -336,6 +346,26 @@ export function getTheme(name = "azure") {
    */
   const key = String(name || "azure").toLowerCase();
   return THEMES[key] || THEMES.azure;
+}
+
+// PUBLIC_INTERFACE
+export function getThemeInfo(name = "azure") {
+  /**
+   * Returns a descriptive summary and raw tokens for the theme.
+   * @param {string} name - theme name
+   * @returns {{ name: string, description?: string, colors: object, typography: object, spacing?: object, cards?: object, bullets?: object }}
+   */
+  const key = String(name || "azure").toLowerCase();
+  const t = THEMES[key] || THEMES.azure;
+  return {
+    name: t?.name || key,
+    description: THEME_DESCRIPTIONS[t?.name || key],
+    colors: t?.colors || {},
+    typography: t?.typography || {},
+    spacing: t?.spacing || {},
+    cards: t?.cards || {},
+    bullets: t?.bullets || {}
+  };
 }
 
 // PUBLIC_INTERFACE

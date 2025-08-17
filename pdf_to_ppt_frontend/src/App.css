@@ -319,3 +319,145 @@ html, body, #root {
   color: var(--muted);
   margin-top: 8px;
 }
+
+/* Theme preview styles */
+.theme-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin: 8px 0 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.theme-preview-header {
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.theme-preview-title {
+  font-weight: 600;
+  color: var(--secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-preview-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.theme-preview-canvas {
+  padding: 12px 14px 14px;
+}
+
+.theme-preview-sample-title {
+  line-height: 1.1;
+}
+
+.theme-preview-divider {
+  height: 4px;
+  width: 120px;
+  border-radius: 3px;
+  margin: 8px 0 12px;
+}
+
+.theme-preview-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 12px;
+}
+@media (max-width: 860px) {
+  .theme-preview-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  box-shadow: 0 1px 10px rgba(0,0,0,0.04);
+}
+
+.theme-card-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.theme-card-body {
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.theme-card-caption {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.theme-tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.token-key {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.token-val {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+}
+
+.chip-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.03);
+}
+
+.chip-label {
+  font-size: 12px;
+  color: var(--secondary);
+}
+
+.chip-hex {
+  font-size: 12px;
+  color: var(--muted);
+}
