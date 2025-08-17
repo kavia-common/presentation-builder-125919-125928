@@ -105,6 +105,31 @@ describe("ThemePreview", () => {
     expect(titleEl).toHaveStyle(`color: #${tStyle.color}`);
     expect(contrastRatio(`#${tStyle.color}`, `#${theme.colors.background}`)).toBeGreaterThanOrEqual(4.5);
   });
+
+  test("all themes: chip hex labels exactly match user-selected tokens (Primary, Accent, Background, Text, Border)", () => {
+    const themes = listThemes();
+
+    themes.forEach((name) => {
+      const theme = getTheme(name);
+      render(<ThemePreview name={name} polished />);
+
+      const region = screen.getByRole("region", {
+        name: new RegExp(`Preview for theme\\s+${name}`, "i"),
+      });
+
+      const expectedHexes = [
+        `#${theme.colors.primary}`,
+        `#${theme.colors.accent}`,
+        `#${theme.colors.background}`,
+        `#${theme.colors.text}`,
+        `#${theme.colors.border}`,
+      ];
+
+      expectedHexes.forEach((hex) => {
+        expect(within(region).getAllByText(hex).length).toBeGreaterThan(0);
+      });
+    });
+  });
 });
 
 // Improve ARIA discoverability: add role to divider via getByRole fallback
