@@ -210,4 +210,75 @@ describe("PPT export theme application", () => {
       expect(line).toBeTruthy();
     }
   });
+
+  test("emerald bullets tokens applied in TITLE_BULLETS (bulletColor, bulletSize, indents) and spacing respected", async () => {
+    const themeName = "emerald";
+    const outline = {
+      theme: themeName,
+      title: "T",
+      slides: [
+        { template: "title-bullets", title: "Intro", bullets: ["Point A", "Point B"] }
+      ],
+    };
+    const Pptx = require("pptxgenjs");
+    Pptx.__reset();
+
+    await generatePptxFromOutline(outline, {}, "T", { themeName });
+
+    const cap = Pptx.__getCaptured();
+    const theme = getTheme(themeName);
+    const spacingX = theme.spacing.pageMarginX;
+
+    // Find the bullets addText call (options.bullet === true)
+    const bulletsTextCall = cap.texts.find((t) => t?.options?.bullet === true);
+    expect(bulletsTextCall).toBeTruthy();
+
+    // Verify bullet tokens mapping
+    expect(bulletsTextCall.options.bulletColor).toBe(theme.bullets.bulletColor);
+    expect(bulletsTextCall.options.bulletSize).toBe(theme.bullets.bulletSize);
+    expect(bulletsTextCall.options.indentLevel).toBe(theme.bullets.indentLevel);
+    expect(bulletsTextCall.options.indent).toBe(theme.bullets.indentLevel);
+
+    // Verify spacing influenced left x (uses mx + 0.2 in renderer)
+    expect(bulletsTextCall.options.x).toBeCloseTo(spacingX + 0.2, 5);
+  });
+
+  test("card tokens (fill, line, shadow, shape) used in COMPARISON template", async () => {
+    const themeName = "emerald";
+    const outline = {
+      theme: themeName,
+      title: "Deck",
+      slides: [
+        {
+          template: "comparison",
+          title: "Compare",
+          left: { title: "A", bullets: ["a1", "a2"] },
+          right: { title: "B", bullets: ["b1", "b2"] },
+        }
+      ],
+    };
+    const Pptx = require("pptxgenjs");
+    Pptx.__reset();
+
+    await generatePptxFromOutline(outline, {}, "Deck", { themeName });
+
+    const cap = Pptx.__getCaptured();
+    const theme = getTheme(themeName);
+
+    // Expect at least two card shapes with theme-driven style
+    const cardShapes = cap.shapes.filter((s) => s.type === (theme.cards.shape || "roundRect"));
+    expect(cardShapes.length).toBeGreaterThanOrEqual(2);
+
+    const aCard = cardShapes[0]?.options;
+    expect(aCard).toBeTruthy();
+    expect(aCard.fill?.color).toBe(theme.cards.fill.color);
+    expect(aCard.line?.color).toBe(theme.cards.line.color);
+    if (theme.cards.line.width != null) {
+      expect(aCard.line.width).toBe(theme.cards.line.width);
+    }
+    // shadow can be undefined for some themes; if present, ensure type matches
+    if (theme.cards.shadow) {
+      expect(aCard.shadow?.type).toBe(theme.cards.shadow.type);
+    }
+  });
 });

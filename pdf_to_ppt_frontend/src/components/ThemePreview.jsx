@@ -70,6 +70,14 @@ export default function ThemePreview({ name = "azure", polished = false }) {
     { key: "Border", value: colors.border },
   ].filter((c) => !!c.value);
 
+  // Bullet sample reflecting theme bullets tokens (UI approximation)
+  const bulletTokens = theme?.bullets || {};
+  const indentInches = typeof bulletTokens.indentLevel === "number" ? bulletTokens.indentLevel : 0.5;
+  const pxPerInch = 96; // CSS logical pixel approximation for preview only
+  const bulletIndentPx = Math.round(indentInches * pxPerInch);
+  const bulletFontSize = Math.max(12, bulletTokens.bulletSize || bodyStylePpt?.fontSize || 16);
+  const bulletColor = h(bulletTokens.bulletColor || bodyStylePpt?.color || colors.text);
+
   return (
     <div
       className="theme-preview"
@@ -130,6 +138,18 @@ export default function ThemePreview({ name = "azure", polished = false }) {
             </div>
             <div className="theme-card-caption" style={cssCaption}>
               Caption text — helpful for notes or image labels.
+            </div>
+
+            {/* Bullet sample (UI approximation of PPT bullet tokens) */}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Bullets sample</div>
+              <ul style={{ listStyle: "disc", margin: 0, paddingLeft: bulletIndentPx }}>
+                <li style={{ fontSize: bulletFontSize, color: bulletColor }}>First point reflecting bullet size</li>
+                <li style={{ fontSize: bulletFontSize, color: bulletColor }}>Second point respecting indent</li>
+              </ul>
+              <div className="small" style={{ marginTop: 4, color: h(colors.muted) }}>
+                Preview uses CSS to approximate PPT bullet indent (inches→pixels) and size.
+              </div>
             </div>
           </div>
 

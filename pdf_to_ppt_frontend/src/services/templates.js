@@ -1,4 +1,5 @@
 //
+//
 // Template renderers for slides using pptxgenjs.
 //
 // Each renderer receives:
@@ -51,6 +52,18 @@ function bulletListOptions(theme) {
     opts.indent = indentIn;
   }
   return opts;
+}
+
+/**
+ * Compute spacing tokens with safe defaults.
+ * Used to parameterize x/y offsets and widths across templates to respect theme spacing.
+ */
+function getSpacing(theme) {
+  return {
+    mx: theme?.spacing?.pageMarginX ?? 0.5,
+    my: theme?.spacing?.pageMarginY ?? 0.5,
+    gutter: theme?.spacing?.gutter ?? 0.25,
+  };
 }
 
 // PUBLIC_INTERFACE
@@ -111,19 +124,24 @@ export function renderSlide(pptx, slide, templateKey, data, theme) {
 function renderTitle(_pptx, slide, data, theme) {
   const title = data?.title || "Untitled";
   const subtitle = data?.subtitle || "";
+  const { mx, my } = getSpacing(theme);
 
   const titleStyle = { ...titleTextStyle(theme), align: "center" };
-  slide.addText(title, { x: 0.5, y: 2.0, w: 9, h: 1, ...titleStyle });
+  slide.addText(title, {
+    x: mx, y: 2.0, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 1, ...titleStyle
+  });
 
   // Accent divider under the title for visual emphasis
   slide.addShape("line", {
-    x: 2.0, y: 2.9, w: 6.0, h: 0,
+    x: mx + 1.0, y: 2.9, w: Math.max(0.5, SLIDE_WIDTH - 2 * (mx + 1.0)), h: 0,
     line: { color: accentColor(theme), width: 3 }
   });
 
   if (subtitle) {
     const subStyle = { ...captionTextStyle(theme), align: "center" };
-    slide.addText(subtitle, { x: 0.5, y: 3.1, w: 9, h: 0.7, ...subStyle });
+    slide.addText(subtitle, {
+      x: mx, y: 3.1, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...subStyle
+    });
   }
 }
 
@@ -131,23 +149,23 @@ function renderTitle(_pptx, slide, data, theme) {
 function renderTitleBullets(_pptx, slide, data, theme) {
   const title = data?.title || "Untitled";
   const bullets = data?.bullets || [];
+  const { mx, my } = getSpacing(theme);
 
+  // Title
   slide.addText(title, {
-    x: 0.6,
-    y: 0.4,
-    w: 8.8,
-    h: 0.7,
+    x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7,
     ...titleTextStyle(theme)
   });
 
   // Accent divider
   slide.addShape("line", {
-    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: accentColor(theme), width: 2 }
+    x: mx, y: my + 0.65, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0, line: { color: accentColor(theme), width: 2 }
   });
 
   if (bullets.length) {
+    const y = my + 0.8;
     slide.addText(bulletListText(bullets), {
-      x: 0.8, y: 1.2, w: 8.4, h: 4.0,
+      x: mx + 0.2, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: Math.max(0.5, SLIDE_HEIGHT - y - my),
       ...bodyTextStyle(theme),
       ...bulletListOptions(theme)
     });
@@ -158,15 +176,16 @@ function renderTitleBullets(_pptx, slide, data, theme) {
 function renderBullets(_pptx, slide, data, theme) {
   const title = data?.title || "";
   const bullets = data?.bullets || [];
-  let y = 0.6;
+  const { mx, my } = getSpacing(theme);
+  let y = my;
 
   if (title) {
-    slide.addText(title, { x: 0.6, y, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
+    slide.addText(title, { x: mx, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
     y += 0.8;
   }
 
   slide.addText(bulletListText(bullets), {
-    x: 0.8, y, w: 8.2, h: 4.5,
+    x: mx + 0.2, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: Math.max(0.5, SLIDE_HEIGHT - y - my),
     ...bodyTextStyle(theme),
     ...bulletListOptions(theme)
   });
@@ -178,20 +197,20 @@ function renderImageCard(_pptx, slide, data, theme) {
   const image = data?.image; // primary data URL
   const images = Array.isArray(data?.images) ? data.images.filter(Boolean) : (image ? [image] : []);
   const caption = data?.caption || "";
+  const { mx, my, gutter } = getSpacing(theme);
 
-  let y = 0.4;
+  let y = my;
   if (title) {
-    slide.addText(title, { x: 0.6, y, w: 8.8, h: 0.6, ...titleTextStyle(theme) });
+    slide.addText(title, { x: mx, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.6, ...titleTextStyle(theme) });
     y += 0.7;
   }
 
   if (images.length >= 2) {
     // Mosaic layout: two images side-by-side centered
-    const gutter = 0.3;
-    const totalW = 8.0;
+    const totalW = Math.max(2, SLIDE_WIDTH - 2 * mx);
     const itemW = (totalW - gutter) / 2;
     const itemH = 4.0;
-    const startX = 1.0;
+    const startX = mx;
 
     slide.addImage({
       data: images[0],
@@ -205,16 +224,18 @@ function renderImageCard(_pptx, slide, data, theme) {
     });
     y += itemH + 0.2;
   } else if (images.length === 1) {
+    const w = Math.max(2, SLIDE_WIDTH - 2 * mx);
+    const h = 4.0;
     slide.addImage({
       data: images[0],
-      x: 1.0, y, w: 8.0, h: 4.0,
-      sizing: { type: "contain", w: 8.0, h: 4.0 }
+      x: mx, y, w, h,
+      sizing: { type: "contain", w, h }
     });
-    y += 4.2;
+    y += h + 0.2;
   }
 
   if (caption) {
-    slide.addText(caption, { x: 1.0, y, w: 8.0, h: 0.6, ...captionTextStyle(theme), align: "center" });
+    slide.addText(caption, { x: mx, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.6, ...captionTextStyle(theme), align: "center" });
   }
 }
 
@@ -223,15 +244,37 @@ function renderImageSide(_pptx, slide, data, theme, side = "right") {
   const title = data?.title || "";
   const bullets = data?.bullets || [];
   const image = data?.image; // data URL
+  const { mx, my, gutter } = getSpacing(theme);
 
-  const imageBox = { x: side === "left" ? 0.6 : 6.1, y: 1.2, w: 3.2, h: 4.0 };
-  const textBox = { x: side === "left" ? 4.0 : 0.8, y: 1.2, w: 5.2, h: 4.2 };
+  // Title
+  slide.addText(title, { x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
 
-  slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
-
+  // Accent divider
   slide.addShape("line", {
-    x: 0.6, y: 1.05, w: 8.8, h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
+    x: mx, y: my + 0.65, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0, line: { color: (theme?.colors?.accent || "FFC107"), width: 2 }
   });
+
+  // Content area below title
+  const contentY = my + 0.8;
+  const contentH = Math.max(1, SLIDE_HEIGHT - contentY - my);
+
+  // Allocate widths
+  const contentW = Math.max(2, SLIDE_WIDTH - 2 * mx);
+  const imageW = 3.2;
+  const textW = Math.max(1, contentW - imageW - gutter);
+
+  const imageBox = {
+    x: side === "left" ? mx : mx + textW + gutter,
+    y: contentY,
+    w: imageW,
+    h: Math.min(4.0, contentH)
+  };
+  const textBox = {
+    x: side === "left" ? mx + imageW + gutter : mx,
+    y: contentY,
+    w: textW,
+    h: Math.min(4.2, contentH)
+  };
 
   if (image) {
     slide.addImage({ data: image, ...imageBox, sizing: { type: "contain", w: imageBox.w, h: imageBox.h } });
@@ -251,17 +294,22 @@ function renderTwoColumn(_pptx, slide, data, theme) {
   const title = data?.title || "";
   const col1 = data?.col1 || data?.bullets || [];
   const col2 = data?.col2 || [];
+  const { mx, my, gutter } = getSpacing(theme);
 
-  slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
+  slide.addText(title, { x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
+
+  const contentY = my + 0.8;
+  const contentH = Math.max(1, SLIDE_HEIGHT - contentY - my);
+  const colW = (Math.max(2, SLIDE_WIDTH - 2 * mx) - gutter) / 2;
 
   slide.addText(bulletListText(col1), {
-    x: 0.8, y: 1.2, w: 4.2, h: 4.0,
+    x: mx + 0.2, y: contentY, w: Math.max(1, colW - 0.2), h: Math.min(4.0, contentH),
     ...bodyTextStyle(theme),
     ...bulletListOptions(theme)
   });
 
   slide.addText(bulletListText(col2), {
-    x: 5.2, y: 1.2, w: 4.2, h: 4.0,
+    x: mx + colW + gutter, y: contentY, w: Math.max(1, colW - 0.2), h: Math.min(4.0, contentH),
     ...bodyTextStyle(theme),
     ...bulletListOptions(theme)
   });
@@ -279,13 +327,14 @@ function renderFlowchart(_pptx, slide, data, theme) {
   const steps = (stepsRaw || []).map((s) => String(s || "").replace(/\s+/g, " ").trim()).filter(Boolean);
 
   // Title
-  slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
+  const { mx, my, gutter } = getSpacing(theme);
+  slide.addText(title, { x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
 
   // Helper tokens
   const spacing = {
-    mx: theme?.spacing?.pageMarginX ?? 0.5,
-    my: theme?.spacing?.pageMarginY ?? 0.5,
-    gutter: theme?.spacing?.gutter ?? 0.25,
+    mx,
+    my,
+    gutter,
   };
   const arrowColor = primaryColor(theme);
   const arrowLine = { color: arrowColor, width: 2, endArrow: "triangle" }; // use end arrow on final segment
@@ -359,19 +408,19 @@ function renderFlowchart(_pptx, slide, data, theme) {
   const n = steps.length;
 
   if (n === 0) {
-    slide.addText("No steps provided.", { x: 1.2, y: 1.8, w: 7.6, h: 0.6, ...captionTextStyle(theme) });
+    slide.addText("No steps provided.", { x: mx + 0.7, y: my + 1.3, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.7)), h: 0.6, ...captionTextStyle(theme) });
     return;
   }
 
   if (n <= 5) {
     // Vertical centered layout
-    const topY = 1.2; // below title
-    const bottomPad = spacing.my + 0.3;
+    const topY = my + 0.7; // below title
+    const bottomPad = my + 0.3;
     const availableH = Math.max(1.5, SLIDE_HEIGHT - topY - bottomPad);
 
     const vGap = clamp(availableH / (n * 4), 0.15, 0.35);
     const boxH = clamp((availableH - vGap * (n - 1)) / n, 0.55, 1.0);
-    const contentW = SLIDE_WIDTH - 2 * spacing.mx - 0.8;
+    const contentW = SLIDE_WIDTH - 2 * mx - 0.8;
     const boxW = clamp(contentW, 6.8, 8.4);
     const x = (SLIDE_WIDTH - boxW) / 2;
 
@@ -388,15 +437,15 @@ function renderFlowchart(_pptx, slide, data, theme) {
     const cols = 2;
     const rows = Math.ceil(n / cols);
 
-    const topY = 1.2;
-    const bottomPad = spacing.my + 0.3;
+    const topY = my + 0.7;
+    const bottomPad = my + 0.3;
     const availableH = Math.max(2.0, SLIDE_HEIGHT - topY - bottomPad);
 
     const vGap = clamp(availableH / (rows * 5), 0.15, 0.3);
     const boxH = clamp((availableH - vGap * (rows - 1)) / rows, 0.5, 1.1);
 
-    const contentX = spacing.mx + 0.4;
-    const contentW = SLIDE_WIDTH - 2 * spacing.mx - 0.8;
+    const contentX = mx + 0.4;
+    const contentW = SLIDE_WIDTH - 2 * mx - 0.8;
     const colW = (contentW - spacing.gutter) / cols;
     const boxW = clamp(colW, 3.0, 4.6);
 
@@ -435,9 +484,10 @@ function renderFlowchart(_pptx, slide, data, theme) {
 function renderQuote(_pptx, slide, data, theme) {
   const quote = data?.quote || (Array.isArray(data?.bullets) ? data.bullets.join(" ") : data?.title || "");
   const attribution = data?.attribution || "";
+  const { mx } = getSpacing(theme);
 
   slide.addText(`“${quote}”`, {
-    x: 1.0, y: 1.8, w: 8.0, h: 1.6,
+    x: mx + 0.5, y: 1.8, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.5)), h: 1.6,
     ...bodyTextStyle(theme),
     fontSize: Math.max(18, (theme.typography?.h2?.fontSize || 22)),
     italic: true,
@@ -446,7 +496,7 @@ function renderQuote(_pptx, slide, data, theme) {
 
   if (attribution) {
     slide.addText(`— ${attribution}`, {
-      x: 1.0, y: 3.2, w: 8.0, h: 0.6,
+      x: mx + 0.5, y: 3.2, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.5)), h: 0.6,
       ...captionTextStyle(theme),
       align: "center"
     });
@@ -458,31 +508,33 @@ function renderComparison(_pptx, slide, data, theme) {
   const title = data?.title || "Comparison";
   const left = data?.left || { title: "Option A", bullets: [] };
   const right = data?.right || { title: "Option B", bullets: [] };
+  const { mx, my, gutter } = getSpacing(theme);
 
-  slide.addText(title, { x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme) });
+  slide.addText(title, { x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
 
   // Left card
   slide.addShape(theme.cards?.shape || "roundRect", {
-    x: 0.6, y: 1.2, w: 4.4, h: 3.8, ...cardShapeOptions(theme)
+    x: mx, y: my + 0.8, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2), h: 3.8, ...cardShapeOptions(theme)
   });
   slide.addText(left.title || "Left", {
-    x: 0.8, y: 1.3, w: 4.0, h: 0.5, ...bodyTextStyle(theme), bold: true
+    x: mx + 0.2, y: my + 0.9, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 0.5, ...bodyTextStyle(theme), bold: true
   });
   slide.addText(bulletListText(left.bullets || []), {
-    x: 0.8, y: 1.9, w: 4.0, h: 2.9,
+    x: mx + 0.2, y: my + 1.5, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 2.9,
     ...bodyTextStyle(theme),
     ...bulletListOptions(theme)
   });
 
   // Right card
+  const rightX = mx + ((SLIDE_WIDTH - 2 * mx - gutter) / 2) + gutter;
   slide.addShape(theme.cards?.shape || "roundRect", {
-    x: 5.0, y: 1.2, w: 4.4, h: 3.8, ...cardShapeOptions(theme)
+    x: rightX, y: my + 0.8, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2), h: 3.8, ...cardShapeOptions(theme)
   });
   slide.addText(right.title || "Right", {
-    x: 5.2, y: 1.3, w: 4.0, h: 0.5, ...bodyTextStyle(theme), bold: true
+    x: rightX + 0.2, y: my + 0.9, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 0.5, ...bodyTextStyle(theme), bold: true
   });
   slide.addText(bulletListText(right.bullets || []), {
-    x: 5.2, y: 1.9, w: 4.0, h: 2.9,
+    x: rightX + 0.2, y: my + 1.5, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 2.9,
     ...bodyTextStyle(theme),
     ...bulletListOptions(theme)
   });
@@ -492,9 +544,10 @@ function renderComparison(_pptx, slide, data, theme) {
 function renderSectionDivider(_pptx, slide, data, theme) {
   const title = data?.title || "Section";
   const subtitle = data?.subtitle || "";
+  const { mx } = getSpacing(theme);
 
   slide.addText(title, {
-    x: 0.5, y: 2.0, w: 9.0, h: 1.0,
+    x: mx, y: 2.0, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 1.0,
     ...titleTextStyle(theme),
     align: "center",
     color: accentColor(theme)
@@ -502,7 +555,7 @@ function renderSectionDivider(_pptx, slide, data, theme) {
 
   if (subtitle) {
     slide.addText(subtitle, {
-      x: 0.5, y: 3.1, w: 9.0, h: 0.6,
+      x: mx, y: 3.1, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.6,
       ...captionTextStyle(theme),
       align: "center"
     });
@@ -514,29 +567,30 @@ function renderChart(_pptx, slide, data, theme) {
   const title = data?.title || "Chart";
   const image = data?.image;
   const bullets = data?.bullets || [];
+  const { mx, my } = getSpacing(theme);
 
   slide.addText(title, {
-    x: 0.6, y: 0.4, w: 8.8, h: 0.7, ...titleTextStyle(theme)
+    x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme)
   });
 
   if (image) {
     slide.addImage({
       data: image,
-      x: 0.9, y: 1.1, w: 8.2, h: 3.8,
-      sizing: { type: "contain", w: 8.2, h: 3.8 }
+      x: mx + 0.3, y: my + 0.7, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 3.8,
+      sizing: { type: "contain", w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 3.8 }
     });
   } else if (bullets.length) {
     slide.addText(bulletListText(bullets), {
-      x: 0.8, y: 1.2, w: 8.4, h: 3.8,
+      x: mx + 0.2, y: my + 0.8, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: 3.8,
       ...bodyTextStyle(theme),
       ...bulletListOptions(theme)
     });
   } else {
     slide.addShape(theme.cards?.shape || "roundRect", {
-      x: 0.9, y: 1.1, w: 8.2, h: 3.8, ...cardShapeOptions(theme)
+      x: mx + 0.3, y: my + 0.7, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 3.8, ...cardShapeOptions(theme)
     });
     slide.addText("Chart Placeholder", {
-      x: 0.9, y: 2.7, w: 8.2, h: 0.6, ...captionTextStyle(theme), align: "center"
+      x: mx + 0.3, y: my + 2.3, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 0.6, ...captionTextStyle(theme), align: "center"
     });
   }
 }

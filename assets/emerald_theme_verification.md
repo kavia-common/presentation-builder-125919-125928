@@ -1,152 +1,91 @@
-# Emerald Theme Verification – Exported PPT Slide
+# Emerald Theme Verification – PPTX Export and UI Preview
 
-Scope: Verify whether the emerald theme parameters are actually being applied in exported slides.
+Scope: Verify whether the emerald theme parameters are fully mapped and respected in exported PPTX slides and the UI ThemePreview. Also summarize status for all themes, since templates and theme utilities are generic.
 
-Artifacts reviewed:
-- Exported slide screenshot (visual): `/home/kavia/workspace/code-generation/attachments/20250817_025618_Screenshot_2025-08-16_at_7.56.07_PM.png`
-- Frontend export code (pptxgenjs, theme, templates):
-  - `src/services/themes.js`
-  - `src/services/templates.js`
-  - `src/services/ppt.js`
-  - Tests: `src/services/ppt.themes.test.js`
-
----
-
-## 1) Visual review of the slide (screenshot)
-
-What’s visible:
-- Background: very pale green that matches emerald background (`F0FDF4`).
-- Title text: dark green (appears as `052E16`) and bold — matches theme typography color for headings.
-- Accent divider under the title: thin line in bright emerald (`10B981`) — matches theme accent token.
-- Bullets: dot bullets with dark text; visually same color as body text (emerald text `052E16`). Indentation appears minimal (likely just the width of the "•" glyph, not a PPT bullet indent).
-
-Conclusion from the visual alone:
-- Colors (background, text, accent) look consistent with emerald tokens.
-- Typography looks consistent (bold header, smaller body bullets).
-- Bullet indentation and bullet sizing are not clearly aligned to a 0.5" indent / explicit bullet size; they look like a text glyph approach rather than PPT bullet formatting.
+Reviewed artifacts:
+- Export logic and templates:
+  - src/services/themes.js
+  - src/services/templates.js (updated to use theme.spacing and true PPT bullets)
+  - src/services/ppt.js
+- UI:
+  - src/components/ThemePreview.jsx (updated to show bullet sample reflecting tokens)
+- Tests:
+  - src/services/ppt.themes.test.js (extended for bullets and card tokens)
+- Prior visual screenshot for emerald title-bullets layout:
+  - attachments/20250817_025618_Screenshot_2025-08-16_at_7.56.07_PM.png
 
 ---
 
-## 2) Code audit (how tokens are applied)
+Verification matrix (applies to all themes, example values shown for emerald):
 
-Files and key functions:
-
-- `src/services/themes.js`
-  - Theme: `buildEmeraldTheme()` sets exactly the requested tokens:
-    - Colors: 
-      - primary=065F46, secondary=059669, accent=10B981, background=F0FDF4, backgroundSoft=ECFDF5,
-      - text=052E16, muted=6B7280, border=A7F3D0, white=FFFFFF, black=000000
-    - Typography: title=34 bold, h1=30 bold, h2=22 bold, body=18, caption=13
-    - Cards: fill=FFFFFF, line=A7F3D0, shadow={type:outer,opacity:0.16,blur:3,offset:1}, shape=roundRect
-    - Bullets: indentLevel=0.5, bulletSize=14, bulletColor=text(052E16)
-  - Helpers enforce contrast and inject tokens:
-    - `slideOptionsForTheme(theme)` -> sets slide background (both `bkgd` and `background`) to `colors.background` (F0FDF4).
-    - `titleTextStyle(theme)`, `bodyTextStyle(theme)`, `captionTextStyle(theme)` -> use the theme’s typography color and size, then ensure sufficient contrast; on light green bg, the dark emerald text passes, so the base color remains.
-
-- `src/services/ppt.js`
-  - `generatePptxFromOutline()` uses:
-    - `slideOptionsForTheme(theme)` -> background = F0FDF4 (emerald).
-    - Title slide text style -> `titleTextStyle(theme)` (color = 052E16).
-  - Images can auto-tune accent via `deriveThemeWithAutoAccent()` unless `autoAccent=false`; tests cover this on emerald.
-  - Dispatches to `renderSlide()` which uses templates below.
-
-- `src/services/templates.js`
-  - Accent line elements:
-    - `renderTitle`/`renderTitleBullets` -> use `accentColor(theme)` (10B981) for divider line (matches screenshot).
-  - Cards (where applicable):
-    - `renderImageCard`, `renderComparison`, `renderChart` (placeholder), and `renderFlowchart` -> call `addShape(theme.cards?.shape || "roundRect", { ...cardShapeOptions(theme) })`.
-      - `cardShapeOptions(theme)` applies fill=FFFFFF, line=A7F3D0, shadow(type=outer,opacity=0.16,blur=3,offset=1), roundRect. Correct.
-  - Bullets:
-    - Lists are rendered as plain text with a prefixed "• " for each line via `bulletsText(bullets)` and `slide.addText(..., { ...bodyTextStyle(theme) })`.
-    - This approach uses no pptx bullet/indent options. As a result:
-      - bullet color = the body text color (052E16) — OK for color parity.
-      - bullet size = body font size (>=18) — NOT the theme bulletSize (14).
-      - indentation = only what the x-coordinate provides; NOT the theme bullets.indentLevel (0.5") as a PPT list indent.
-
-- Tests: `src/services/ppt.themes.test.js`
-  - Verifies that:
-    - Background token is applied to slides.
-    - Title text color aligns with theme.
-    - Accent line uses theme accent color.
-    - Auto-accent off preserves accent token.
-  - These tests do NOT currently validate bullet size/indent/token usage and do not verify card shadows/line on specific templates (they’re implied by shapes captured, but not asserted exhaustively).
-
----
-
-## 3) Verification status by token group
-
-- Colors (primary/accent/background/text):
+- Colors
+  - Primary: USED (primaryColor() in flowchart connectors), emerald.primary=065F46
+  - Accent: USED (accentColor() for dividers), emerald.accent=10B981
+  - Background: USED (slideOptionsForTheme), emerald.background=F0FDF4
+  - Text: USED (title/body/caption styles), emerald.text=052E16
+  - Muted/Border/White/Black: USED where relevant (caption, card line/fill)
   - Status: PASS
-  - Evidence:
-    - `slideOptionsForTheme` sets background to `F0FDF4`.
-    - `titleTextStyle/bodyTextStyle/captionTextStyle` use dark emerald `052E16` with contrast enforcement.
-    - Accent divider lines in templates use `accentColor(theme)` -> `10B981`.
-    - Visual screenshot matches these.
 
-- Typography (body/captions/headings):
+- Typography
+  - Title/h1/h2/body/caption fontSize/bold/color: USED via titleTextStyle/bodyTextStyle/captionTextStyle with WCAG contrast enforcement
   - Status: PASS
-  - Evidence:
-    - Sizes and colors come from `theme.typography` with sensible minimums; bold flags are preserved.
-    - Screenshot shows bold green header and normal body.
 
-- Cards (fill, border, shadow, roundRect):
-  - Status: PASS WHERE USED
-  - Evidence:
-    - `cardShapeOptions(theme)` and `theme.cards.shape` are used in templates that draw cards (image-card, comparison, chart placeholder, flowchart boxes).
-    - Screenshot slide is a title-bullets layout (no card visible), but code ensures cards render with the correct emerald tokens on other templates.
+- Cards
+  - fill.line.shadow.shape: USED via cardShapeOptions(theme) and shape type in COMPARISON, IMAGE_CARD, CHART placeholder, and FLOWCHART nodes
+  - Status: PASS
 
-- Spacing (gutter, pageMarginX/Y):
-  - Status: PARTIAL
-  - Evidence:
-    - Flowchart template uses spacing tokens for layout.
-    - Most other templates use fixed coordinates (e.g., `x: 0.6/0.8` etc.), not parameterized by `theme.spacing`.
+- Bullets
+  - bulletColor: USED (derived from theme.bullets or body color)
+  - bulletSize: USED (options.bulletSize)
+  - indentLevel: USED (options.indentLevel and indent mirror)
+  - Rendering: TRUE PPT bullets with newline-separated paragraphs (no manual “•” prefix)
+  - Status: PASS
 
-- Bullets (color, size, indent):
-  - Status: PARTIAL
-  - Evidence:
-    - Current implementation uses a literal "• " prefix and body text style.
-    - bulletColor: yes (implicitly equal to body text color = 052E16).
-    - bulletSize: NOT applied; it follows body font size (>=18) rather than `theme.bullets.bulletSize=14`.
-    - indentLevel: NOT applied; no PPT bullet indent; only a fixed text box `x` offset.
+- Spacing
+  - pageMarginX/pageMarginY/gutter: USED in FLOWCHART; NOW applied across TITLE_BULLETS, BULLETS, IMAGE_CARD, IMAGE_LEFT/RIGHT, TWO_COLUMN, CHART, SECTION_DIVIDER (x/w/y sizes respect theme spacing; see templates.js)
+  - Status: PASS
 
 ---
 
-## 4) Recommendations
+Findings and implemented fixes
 
-To fully apply emerald bullet tokens and spacing across templates:
+1) True PPT bullets and bullet tokens
+   - Before: bullets were previously text-only in some codebases; now bulletListOptions(theme) sets bullet, bulletColor, bulletSize, and both indentLevel and indent for cross-compatibility.
+   - Applied templates: TITLE_BULLETS, BULLETS, IMAGE_LEFT/RIGHT text regions, TWO_COLUMN, CHART fallback.
+   - Tests added to assert bulletColor, bulletSize, and indent mappings for emerald and spacing influence on positions.
 
-1) Apply true PPT bullet formatting in templates:
-   - In `renderTitleBullets`, `renderBullets`, `renderImageSide`, `renderTwoColumn`, set addText options with bullet properties.
-   - Example (pptxgenjs v3.x options; verify exact names against the installed version):
-     - `bullet: true`
-     - `bulletColor: theme.bullets.bulletColor`
-     - `bulletSize: theme.bullets.bulletSize`
-     - `indent: theme.bullets.indentLevel`
-     - Keep `...bodyTextStyle(theme)` for text style (color/size), but remove the prefixed "• ".
+2) Spacing tokens applied
+   - Introduced getSpacing(theme) helper and parameterized coordinates and widths in templates to respect pageMarginX/Y and gutter consistently across templates.
+   - FLOWCHART already used spacing; others now do as well.
 
-2) Parameterize spacing for more templates:
-   - Replace fixed `x/y` paddings (e.g., Title Bullets) with:
-     - `x: theme.spacing.pageMarginX + <localOffset>`
-     - `y: theme.spacing.pageMarginY + <localOffset>`
-     - horizontal widths that respect `gutter`.
+3) UI ThemePreview parity
+   - Added a bullet sample that approximates PPT bullet tokens using CSS:
+     - font-size ≈ bulletSize
+     - indent ≈ indentLevel inches converted to ~96 px/in
+     - color = bulletColor
+   - Note: CSS is an approximation for preview purposes only.
 
-3) Add tests for bullets and cards:
-   - Extend `ppt.themes.test.js` to assert `addText` bullet options (size, indent, color) are set to emerald tokens.
-   - Add assertions for card shapes (line color = A7F3D0, shadow opacity ~0.16, type=outer) for a template that renders cards.
-
-4) Document a note in ThemePreview:
-   - Currently shows typography/colors accurately. Add a small note that bullet size/indent adhere to theme tokens in exports once implemented.
-
----
-
-## 5) Final assessment
-
-- Colors: fully applied and visually correct on the exported slide.
-- Typography: applied as intended with accessibility contrast checks.
-- Cards: implemented correctly and will render with emerald tokens on card-using templates.
-- Spacing: partially used (notably in Flowchart); other templates still rely on fixed coordinates.
-- Bullets: color aligns via body style, but bulletSize and indentLevel tokens are not yet applied as real PPT bullet properties.
-
-Net: The emerald theme is mostly applied except for true bullet formatting (size/indent) and broader spacing usage across templates.
+4) Tests extended
+   - Verified:
+     - Background tokens applied (existing)
+     - Title color applied (existing)
+     - Accent lines retain token when autoAccent=false (existing)
+     - NEW: Bullets token mapping (color/size/indent) and spacing-based x for TITLE_BULLETS
+     - NEW: Cards token mapping for COMPARISON
 
 ---
+
+Conclusion
+
+- The emerald theme (and all themes) now have full token coverage across PPTX export and UI preview for:
+  - colors, typography, cards, bullets, and spacing.
+- Auto-accent behavior remains opt-in (default on) and is documented/covered by tests.
+- Future work: If font families are introduced as tokens, plumb them into title/body/caption styles and preview.
+
+```Summary of key emerald tokens used:
+colors: { primary: 065F46, secondary: 059669, accent: 10B981, background: F0FDF4, text: 052E16, muted: 6B7280, border: A7F3D0 }
+typography: { title: 34 bold, h1: 30 bold, h2: 22 bold, body: 18, caption: 13 } with contrast checks
+cards: { fill: FFFFFF, line: A7F3D0 (w=1), shadow: outer 0.16 blur=3 off=1, shape: roundRect }
+bullets: { color: 052E16, size: 14, indentLevel: 0.5" }
+spacing: { pageMarginX: 0.5", pageMarginY: 0.5", gutter: 0.25" }
+```
