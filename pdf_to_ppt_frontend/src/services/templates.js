@@ -16,8 +16,101 @@ import { slideOptionsForTheme, titleTextStyle, bodyTextStyle, captionTextStyle, 
 const SLIDE_WIDTH = 10;  // standard widescreen: 10" x 5.625"
 const SLIDE_HEIGHT = 5.625;
 
-// Bullet helpers (native PPT bullets, no manual "•" prefix)
+/* ---------------- Bullet helpers (native PPT bullets, sub-levels supported) ---------------- */
+
 /**
+ * Normalize arbitrary bullets input into a uniform nested structure.
+ * Accepts:
+ *  - string -> { text }
+ *  - { text, children?, level? }
+ *  - array (possibly nested arrays)
+ */
+function normalizeBulletsInput(bullets) {
+  if (!bullets) return [];
+  const arr = Array.isArray(bullets) ? bullets : [bullets];
+
+  const toNode = (item) => {
+    if (typeof item === "string") {
+      return { text: (item || "").toString(), children: [] };
+    }
+    if (Array.isArray(item)) {
+      // Nested array: first item is text, rest are children or nested arrays
+      if (item.length === 0) return null;
+      const [head, ...rest] = item;
+      const node = toNode(head);
+      if (!node) return null;
+      node.children = rest.map(toNode).filter(Boolean);
+      return node;
+    }
+    if (item && typeof item === "object") {
+      const text = (item.text ?? "").toString();
+      const children = Array.isArray(item.children) ? item.children.map(toNode).filter(Boolean) : [];
+      return { text, children };
+    }
+    return null;
+  };
+
+  return arr.map(toNode).filter(Boolean);
+}
+
+/**
+ * Generate pptxgenjs paragraph chunks supporting nested bullet levels.
+ * Returns an array of paragraph pieces acceptable by slide.addText([...], options)
+ * Each piece has its own bullet, indentLevel/indent and fontSize derived from theme and level.
+ */
+function paragraphsFromBullets(bullets, theme, baseLevel = 0) {
+  const pieces = [];
+  const nodes = normalizeBulletsInput(bullets);
+
+  const baseBody = bodyTextStyle(theme);
+  const baseFontSize = Math.max(12, baseBody.fontSize || 18);
+  const baseIndent = (theme?.bullets?.indentLevel != null ? theme.bullets.indentLevel : 0.5) || 0.5;
+
+  const bulletColor = (lvl) => {
+    // Allow per-level override if present in theme; else use default
+    return (theme?.bullets?.colors && theme.bullets.colors[lvl]) || theme?.bullets?.bulletColor || theme?.typography?.body?.color || "000000";
+  };
+
+  const bulletSizeFor = (lvl) => {
+    // Scale down on deeper levels for hierarchy
+    const base = (typeof theme?.bullets?.bulletSize === "number" ? theme.bullets.bulletSize : baseBody.fontSize || 18);
+    return Math.max(10, Math.round(base - (lvl * 2)));
+  };
+
+  const fontSizeFor = (lvl) => {
+    return Math.max(12, Math.round(baseFontSize - (lvl * 2)));
+  };
+
+  const walk = (list, level) => {
+    for (const node of list) {
+      if (!node || !node.text) continue;
+      const lvl = Math.max(0, level);
+      const indentInches = Math.max(0, baseIndent * lvl);
+      pieces.push({
+        text: node.text,
+        options: {
+          bullet: true,
+          bulletColor: bulletColor(lvl),
+          bulletSize: bulletSizeFor(lvl),
+          // Provide both indent and indentLevel for broader pptxgenjs compatibility
+          indentLevel: indentInches,
+          indent: indentInches,
+          fontSize: fontSizeFor(lvl),
+          color: bulletColor(lvl),
+        },
+      });
+      if (node.children && node.children.length) {
+        walk(node.children, lvl + 1);
+      }
+    }
+  };
+
+  walk(nodes, baseLevel);
+  return pieces;
+}
+
+/**
+ * Legacy single-level bullets helper (still used in some paths).
  * Turns an array of bullet strings into multi-paragraph text for pptxgenjs.
  * pptxgenjs will bullet each paragraph when options.bullet === true.
  */
@@ -29,9 +122,9 @@ function bulletListText(bullets = []) {
 }
 
 /**
- * Build bullet options from theme tokens.
- * Applies bulletColor, bulletSize, and indentLevel via native PPT list formatting.
+ * Build bullet options from theme tokens for top-level .addText call.
  * Also sets "indent" mirror for broader compatibility across pptxgenjs versions.
+ * Note: sub-level overrides are applied per-paragraph in paragraphsFromBullets().
  */
 function bulletListOptions(theme) {
   const b = theme?.bullets || {};
@@ -54,9 +147,26 @@ function bulletListOptions(theme) {
 }
 
 /**
- * Compute spacing tokens with safe defaults.
- * Used to parameterize x/y offsets and widths across templates to respect theme spacing.
+ * Render nested bullets: builds per-paragraph definitions and uses theme tokens for levels.
+ * Also sets top-level bullet options so existing tests that inspect options.bullet still pass.
  */
+function renderBulletedText(slide, { x, y, w, h }, bullets, theme, extraStyle = {}) {
+  const paras = paragraphsFromBullets(bullets, theme, 0);
+  const base = { x, y, w, h };
+  slide.addText(
+    paras.length ? paras : bulletListText(bullets),
+    {
+      ...extraStyle,
+      ...bulletListOptions(theme),
+      // Base body style applied as default; per-paragraph overrides fontSize/color as needed
+      ...bodyTextStyle(theme),
+      ...base
+    }
+  );
+}
+
+/* ---------------- Spacing and decorations ---------------- */
+
 function getSpacing(theme) {
   return {
     mx: theme?.spacing?.pageMarginX ?? 0.5,
@@ -135,6 +245,8 @@ export function normalizeTemplateKey(key) {
     "section-divider": "SECTION_DIVIDER",
     "section_divider": "SECTION_DIVIDER",
     "chart": "CHART",
+    // tables
+    "table": "TABLE",
     // New creative/divider and split/asym layouts
     "section-divider-angled": "SECTION_DIVIDER_ANGLED",
     "section_divider_angled": "SECTION_DIVIDER_ANGLED",
@@ -223,13 +335,14 @@ function renderTitleBullets(_pptx, slide, data, theme) {
     x: mx, y: my + 0.65, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0, line: { color: accentColor(theme), width: 2 }
   });
 
-  if (bullets.length) {
+  if ((Array.isArray(bullets) ? bullets.length : !!bullets)) {
     const y = my + 0.8;
-    slide.addText(bulletListText(bullets), {
-      x: mx + 0.2, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: Math.max(0.5, SLIDE_HEIGHT - y - my),
-      ...bodyTextStyle(theme),
-      ...bulletListOptions(theme)
-    });
+    renderBulletedText(
+      slide,
+      { x: mx + 0.2, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: Math.max(0.5, SLIDE_HEIGHT - y - my) },
+      bullets,
+      theme
+    );
   }
 }
 
@@ -245,11 +358,12 @@ function renderBullets(_pptx, slide, data, theme) {
     y += 0.8;
   }
 
-  slide.addText(bulletListText(bullets), {
-    x: mx + 0.2, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: Math.max(0.5, SLIDE_HEIGHT - y - my),
-    ...bodyTextStyle(theme),
-    ...bulletListOptions(theme)
-  });
+  renderBulletedText(
+    slide,
+    { x: mx + 0.2, y, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: Math.max(0.5, SLIDE_HEIGHT - y - my) },
+    bullets,
+    theme
+  );
 }
 
 // IMAGE_CARD: Large image centered with caption; optional title on top
@@ -341,12 +455,8 @@ function renderImageSide(_pptx, slide, data, theme, side = "right") {
     slide.addImage({ data: image, ...imageBox, sizing: { type: "contain", w: imageBox.w, h: imageBox.h } });
   }
 
-  if (bullets.length) {
-    slide.addText(bulletListText(bullets), {
-      ...textBox,
-      ...bodyTextStyle(theme),
-      ...bulletListOptions(theme)
-    });
+  if ((Array.isArray(bullets) ? bullets.length : !!bullets)) {
+    renderBulletedText(slide, textBox, bullets, theme);
   }
 }
 
@@ -363,17 +473,19 @@ function renderTwoColumn(_pptx, slide, data, theme) {
   const contentH = Math.max(1, SLIDE_HEIGHT - contentY - my);
   const colW = (Math.max(2, SLIDE_WIDTH - 2 * mx) - gutter) / 2;
 
-  slide.addText(bulletListText(col1), {
-    x: mx + 0.2, y: contentY, w: Math.max(1, colW - 0.2), h: Math.min(4.0, contentH),
-    ...bodyTextStyle(theme),
-    ...bulletListOptions(theme)
-  });
+  renderBulletedText(
+    slide,
+    { x: mx + 0.2, y: contentY, w: Math.max(1, colW - 0.2), h: Math.min(4.0, contentH) },
+    col1,
+    theme
+  );
 
-  slide.addText(bulletListText(col2), {
-    x: mx + colW + gutter, y: contentY, w: Math.max(1, colW - 0.2), h: Math.min(4.0, contentH),
-    ...bodyTextStyle(theme),
-    ...bulletListOptions(theme)
-  });
+  renderBulletedText(
+    slide,
+    { x: mx + colW + gutter, y: contentY, w: Math.max(1, colW - 0.2), h: Math.min(4.0, contentH) },
+    col2,
+    theme
+  );
 }
 
 /**
@@ -580,11 +692,12 @@ function renderComparison(_pptx, slide, data, theme) {
   slide.addText(left.title || "Left", {
     x: mx + 0.2, y: my + 0.9, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 0.5, ...bodyTextStyle(theme), bold: true
   });
-  slide.addText(bulletListText(left.bullets || []), {
-    x: mx + 0.2, y: my + 1.5, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 2.9,
-    ...bodyTextStyle(theme),
-    ...bulletListOptions(theme)
-  });
+  renderBulletedText(
+    slide,
+    { x: mx + 0.2, y: my + 1.5, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 2.9 },
+    left.bullets || [],
+    theme
+  );
 
   // Right card
   const rightX = mx + ((SLIDE_WIDTH - 2 * mx - gutter) / 2) + gutter;
@@ -594,11 +707,12 @@ function renderComparison(_pptx, slide, data, theme) {
   slide.addText(right.title || "Right", {
     x: rightX + 0.2, y: my + 0.9, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 0.5, ...bodyTextStyle(theme), bold: true
   });
-  slide.addText(bulletListText(right.bullets || []), {
-    x: rightX + 0.2, y: my + 1.5, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 2.9,
-    ...bodyTextStyle(theme),
-    ...bulletListOptions(theme)
-  });
+  renderBulletedText(
+    slide,
+    { x: rightX + 0.2, y: my + 1.5, w: Math.max(1, (SLIDE_WIDTH - 2 * mx - gutter) / 2 - 0.4), h: 2.9 },
+    right.bullets || [],
+    theme
+  );
 }
 
 // SECTION_DIVIDER: big centered section title and optional subtitle
@@ -666,18 +780,88 @@ function renderChart(_pptx, slide, data, theme) {
       x: mx + 0.3, y: my + 0.7, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 3.8,
       sizing: { type: "contain", w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 3.8 }
     });
-  } else if (bullets.length) {
-    slide.addText(bulletListText(bullets), {
-      x: mx + 0.2, y: my + 0.8, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: 3.8,
-      ...bodyTextStyle(theme),
-      ...bulletListOptions(theme)
-    });
+  } else if ((Array.isArray(bullets) ? bullets.length : !!bullets)) {
+    renderBulletedText(
+      slide,
+      { x: mx + 0.2, y: my + 0.8, w: Math.max(1, SLIDE_WIDTH - 2 * mx - 0.4), h: 3.8 },
+      bullets,
+      theme
+    );
   } else {
     slide.addShape(theme.cards?.shape || "roundRect", {
       x: mx + 0.3, y: my + 0.7, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 3.8, ...cardShapeOptions(theme)
     });
     slide.addText("Chart Placeholder", {
       x: mx + 0.3, y: my + 2.3, w: Math.max(1, SLIDE_WIDTH - 2 * (mx + 0.3)), h: 0.6, ...captionTextStyle(theme), align: "center"
+    });
+  }
+}
+
+/* ---------------- TABLE template (native pptxgenjs) ---------------- */
+
+function normalizeTableData(table) {
+  // Accepts either:
+  // - { headers?: string[], rows: string[][] }
+  // - string[][] (first row maybe header)
+  if (!table) return { rows: [] };
+  if (Array.isArray(table)) {
+    // assume array of rows
+    return { rows: table };
+  }
+  const headers = Array.isArray(table.headers) ? table.headers : null;
+  const rows = Array.isArray(table.rows) ? table.rows : [];
+  if (headers && rows.length) {
+    return { rows: [headers, ...rows] };
+  }
+  if (headers && (!rows.length)) return { rows: [headers] };
+  return { rows };
+}
+
+function renderTable(_pptx, slide, data, theme) {
+  const title = data?.title || "Table";
+  const tableInput = data?.table;
+  const { rows } = normalizeTableData(tableInput);
+  const { mx, my } = getSpacing(theme);
+
+  // Title
+  slide.addText(title, {
+    x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7,
+    ...titleTextStyle(theme)
+  });
+
+  const contentY = my + 0.8;
+  const tableW = Math.max(2, SLIDE_WIDTH - 2 * mx);
+
+  // Derive simple header/body styles
+  const headerFill = { color: theme?.colors?.accent || "FFC107" };
+  const headerColor = theme?.colors?.white || "FFFFFF";
+  const bodyFill = { color: theme?.colors?.white || "FFFFFF" };
+  const borderColor = theme?.colors?.border || "E5E7EB";
+
+  const tableRows = rows.map((r, rIdx) =>
+    (Array.isArray(r) ? r : [String(r ?? "")]).map((cell) => {
+      const cellText = (cell == null) ? "" : String(cell);
+      if (rIdx === 0) {
+        return { text: cellText, options: { bold: true, fill: headerFill, color: headerColor } };
+      }
+      return { text: cellText, options: { fill: bodyFill } };
+    })
+  );
+
+  try {
+    slide.addTable(tableRows, {
+      x: mx,
+      y: contentY,
+      w: tableW,
+      border: { pt: 1, color: borderColor },
+      valign: "middle",
+      fontSize: Math.max(12, (theme?.typography?.body?.fontSize || 16)),
+      color: theme?.typography?.body?.color || theme?.colors?.text || "000000",
+    });
+  } catch (e) {
+    // fallback: if addTable not supported in this env/mocked lib, show notice
+    slide.addText("Table rendering not supported in this environment.", {
+      x: mx, y: contentY + 0.5, w: tableW, h: 0.6, ...captionTextStyle(theme), align: "center", italic: true
     });
   }
 }
@@ -728,16 +912,16 @@ function renderSplitSection(_pptx, slide, data, theme, { imageOn = "right" } = {
   // Content placement
   if (image && (imageOn === "left")) {
     slide.addImage({ data: image, ...leftBox, sizing: { type: "contain", w: leftBox.w, h: leftBox.h } });
-    slide.addText(bulletListText(bullets), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    renderBulletedText(slide, rightBox, bullets, theme);
   } else if (image && (imageOn === "right")) {
-    slide.addText(bulletListText(bullets), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    renderBulletedText(slide, leftBox, bullets, theme);
     slide.addImage({ data: image, ...rightBox, sizing: { type: "contain", w: rightBox.w, h: rightBox.h } });
   } else {
     // Double-content (fallback to col1/col2 if present)
     const c1 = Array.isArray(data?.col1) ? data.col1 : bullets;
     const c2 = Array.isArray(data?.col2) ? data.col2 : [];
-    slide.addText(bulletListText(c1), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
-    slide.addText(bulletListText(c2), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    renderBulletedText(slide, leftBox, c1, theme);
+    renderBulletedText(slide, rightBox, c2, theme);
   }
 }
 
@@ -787,13 +971,13 @@ function renderAsym(pptx, slide, data, theme, { bigOn = "right" } = {}) {
 
   if (col2.length || col1.length) {
     // Use provided content columns
-    const leftContent = bigOn === "left" ? col1 : col1; // col1 is conceptually left
-    const rightContent = bigOn === "left" ? col2 : col2; // keep columns aligned with user intent
+    const leftContent = col1; // col1 is conceptually left
+    const rightContent = col2; // keep columns aligned with user intent
     if (leftContent.length) {
-      slide.addText(bulletListText(leftContent), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+      renderBulletedText(slide, leftBox, leftContent, theme);
     }
     if (rightContent.length) {
-      slide.addText(bulletListText(rightContent), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+      renderBulletedText(slide, rightBox, rightContent, theme);
     } else if (image) {
       slide.addImage({ data: image, ...rightBox, sizing: { type: "contain", w: rightBox.w, h: rightBox.h } });
     }
@@ -801,9 +985,9 @@ function renderAsym(pptx, slide, data, theme, { bigOn = "right" } = {}) {
     // Asym image+bullets
     if (bigOn === "left") {
       slide.addImage({ data: image, ...leftBox, sizing: { type: "contain", w: leftBox.w, h: leftBox.h } });
-      slide.addText(bulletListText(bullets), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+      renderBulletedText(slide, rightBox, bullets, theme);
     } else {
-      slide.addText(bulletListText(bullets), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+      renderBulletedText(slide, leftBox, bullets, theme);
       slide.addImage({ data: image, ...rightBox, sizing: { type: "contain", w: rightBox.w, h: rightBox.h } });
     }
   }
@@ -837,6 +1021,7 @@ export const TEMPLATES = {
   SECTION_DIVIDER: renderSectionDivider,
   SECTION_DIVIDER_ANGLED: renderSectionDividerAngled,
   CHART: renderChart,
+  TABLE: renderTable,
   // new modern layouts
   SPLIT_SECTION: renderSplitSection,
   SPLIT_IMAGE_LEFT: renderSplitImageLeft,

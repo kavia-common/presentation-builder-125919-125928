@@ -212,7 +212,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
     const data = {
       title: s.title || "",
       subtitle: s.subtitle || "",
-      bullets: Array.isArray(s.bullets) ? s.bullets : [],
+      bullets: Array.isArray(s.bullets) ? s.bullets : s.bullets, // allow nested/object bullets too
       image: primaryImage,
       images, // pass all selected images for templates capable of mosaics
       caption: caption || "",
@@ -221,6 +221,7 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
       right: s.right,
       col1: s.col1,
       col2: s.col2,
+      table: s.table, // pass through for TABLE template
       _slideIndex: idx, // enable alternating overlays and dynamic placements
     };
 
@@ -313,6 +314,7 @@ function inferTemplateKey(slideDef, data, index = 0) {
   const hasImage = !!data.image;
   const bulletsLen = Array.isArray(data.bullets) ? data.bullets.length : 0;
 
+  if (slideDef?.table) return "TABLE";
   if (slideDef?.flow?.steps?.length) return "FLOWCHART";
   if (slideDef?.left || slideDef?.right) return "COMPARISON";
 
