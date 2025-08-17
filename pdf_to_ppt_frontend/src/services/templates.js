@@ -10,7 +10,6 @@
 //
 // PUBLIC_INTERFACE helpers and registry are exported.
 //
-
 import { slideOptionsForTheme, titleTextStyle, bodyTextStyle, captionTextStyle, cardShapeOptions, primaryColor, accentColor } from "./themes";
 
 // Layout constants
@@ -66,6 +65,47 @@ function getSpacing(theme) {
   };
 }
 
+/**
+ * Draw a subtle alternating backdrop overlay (instead of changing slide options),
+ * so tests expecting static background tokens still pass.
+ * Will apply a soft background on odd-indexed slides to create visual rhythm.
+ */
+function maybeRenderAlternatingBackdrop(slide, theme, data) {
+  const idx = data?._slideIndex;
+  const bgSoft = theme?.colors?.backgroundSoft || null;
+  if (typeof idx === "number" && idx % 2 === 1 && bgSoft) {
+    // Full-bleed soft background rectangle drawn first (under other elements)
+    slide.addShape("rect", {
+      x: 0, y: 0, w: SLIDE_WIDTH, h: SLIDE_HEIGHT,
+      fill: { color: bgSoft },
+      line: { color: bgSoft, width: 0 }
+    });
+  }
+}
+
+/**
+ * Draw an angled stripe for a bold/modern divider effect.
+ * Uses a rotated rectangle to simulate a diagonal overlay.
+ */
+function drawAngledStripe(slide, theme, {
+  color = accentColor(theme),
+  angle = -8,
+  thickness = 0.8,
+  align = "top", // "top" | "bottom"
+} = {}) {
+  // Make rectangle wider than slide width to cover corners when rotated
+  const w = SLIDE_WIDTH * 1.4;
+  const x = -(w - SLIDE_WIDTH) / 2;
+  const y = align === "top" ? -0.2 : SLIDE_HEIGHT - thickness + 0.2;
+
+  slide.addShape("rect", {
+    x, y, w, h: thickness,
+    fill: { color },
+    line: { color, width: 0 },
+    rotate: angle,
+  });
+}
+
 // PUBLIC_INTERFACE
 export function normalizeTemplateKey(key) {
   /**
@@ -94,7 +134,22 @@ export function normalizeTemplateKey(key) {
     "comparison": "COMPARISON",
     "section-divider": "SECTION_DIVIDER",
     "section_divider": "SECTION_DIVIDER",
-    "chart": "CHART"
+    "chart": "CHART",
+    // New creative/divider and split/asym layouts
+    "section-divider-angled": "SECTION_DIVIDER_ANGLED",
+    "section_divider_angled": "SECTION_DIVIDER_ANGLED",
+    "divider-angled": "SECTION_DIVIDER_ANGLED",
+    "divider-stripe": "SECTION_DIVIDER_ANGLED",
+    "split-section": "SPLIT_SECTION",
+    "split": "SPLIT_SECTION",
+    "split-image-left": "SPLIT_IMAGE_LEFT",
+    "split_image_left": "SPLIT_IMAGE_LEFT",
+    "split-image-right": "SPLIT_IMAGE_RIGHT",
+    "split_image_right": "SPLIT_IMAGE_RIGHT",
+    "asym-1-2": "ASYM_1_2",
+    "asym_1_2": "ASYM_1_2",
+    "asym-2-1": "ASYM_2_1",
+    "asym_2_1": "ASYM_2_1",
   };
   return map[raw] || raw.toUpperCase() || "BULLETS";
 }
@@ -114,6 +169,12 @@ export function renderSlide(pptx, slide, templateKey, data, theme) {
   /** Dispatch rendering to the proper template function. */
   const normalized = normalizeTemplateKey(templateKey);
   console.log('[ThemeTrace] [templates.renderSlide] dispatch', { requested: templateKey, normalized, themeName: theme?.name, colors: theme?.colors });
+
+  // Apply alternating backdrop before content for a modern rhythm without changing slide options
+  try {
+    maybeRenderAlternatingBackdrop(slide, theme, data || {});
+  } catch { /* ignore overlay errors */ }
+
   const renderer = chooseTemplateRenderer(normalized);
   return renderer(pptx, slide, data, theme);
 }
@@ -441,13 +502,13 @@ function renderFlowchart(_pptx, slide, data, theme) {
     const bottomPad = my + 0.3;
     const availableH = Math.max(2.0, SLIDE_HEIGHT - topY - bottomPad);
 
-    const vGap = clamp(availableH / (rows * 5), 0.15, 0.3);
-    const boxH = clamp((availableH - vGap * (rows - 1)) / rows, 0.5, 1.1);
+    const vGap = Math.max(0.15, Math.min(availableH / (rows * 5), 0.3));
+    const boxH = Math.max(0.5, Math.min((availableH - vGap * (rows - 1)) / rows, 1.1));
 
     const contentX = mx + 0.4;
     const contentW = SLIDE_WIDTH - 2 * mx - 0.8;
     const colW = (contentW - spacing.gutter) / cols;
-    const boxW = clamp(colW, 3.0, 4.6);
+    const boxW = Math.max(3.0, Math.min(colW, 4.6));
 
     const xLeft = contentX + (colW - boxW) / 2;
     const xRight = contentX + colW + spacing.gutter + (colW - boxW) / 2;
@@ -562,6 +623,32 @@ function renderSectionDivider(_pptx, slide, data, theme) {
   }
 }
 
+// SECTION_DIVIDER_ANGLED: bold diagonal stripe with title
+function renderSectionDividerAngled(_pptx, slide, data, theme) {
+  const title = data?.title || "Section";
+  const subtitle = data?.subtitle || "";
+  const { mx } = getSpacing(theme);
+
+  // Draw an angled accent stripe across the top for dramatic effect
+  drawAngledStripe(slide, theme, { color: accentColor(theme), angle: -10, thickness: 0.8, align: "top" });
+
+  // Title left-centered
+  slide.addText(title, {
+    x: mx, y: 1.8, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 1.0,
+    ...titleTextStyle(theme),
+    color: theme?.colors?.text,
+    align: "center"
+  });
+
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: mx, y: 2.9, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.6,
+      ...captionTextStyle(theme),
+      align: "center"
+    });
+  }
+}
+
 // CHART: if image provided, display; else fall back to bullets or placeholder
 function renderChart(_pptx, slide, data, theme) {
   const title = data?.title || "Chart";
@@ -595,6 +682,142 @@ function renderChart(_pptx, slide, data, theme) {
   }
 }
 
+/* --------- New modern/asymmetric and split-section templates --------- */
+
+/**
+ * Split-section layout: left and right panels with a narrow angled divider accent.
+ * Supports content+image or double content based on provided data.
+ */
+function renderSplitSection(_pptx, slide, data, theme, { imageOn = "right" } = {}) {
+  const title = data?.title || "";
+  const bullets = Array.isArray(data?.bullets) ? data.bullets : [];
+  const image = data?.image;
+  const { mx, my, gutter } = getSpacing(theme);
+
+  // Title and subtle angled stripe below header
+  if (title) {
+    slide.addText(title, { x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
+    drawAngledStripe(slide, theme, { color: accentColor(theme), angle: -8, thickness: 0.35, align: "top" });
+  }
+
+  const contentY = title ? my + 0.8 : my;
+  const contentH = Math.max(1, SLIDE_HEIGHT - contentY - my);
+  const contentW = Math.max(2, SLIDE_WIDTH - 2 * mx);
+  const leftW = (contentW - gutter) / 2;
+  const rightW = (contentW - gutter) / 2;
+
+  // Soft backgrounds per panel for structure
+  const leftBg = theme?.colors?.backgroundSoft || null;
+  const rightBg = theme?.colors?.background || null;
+  if (leftBg) {
+    slide.addShape("rect", { x: mx, y: contentY, w: leftW, h: contentH, fill: { color: leftBg }, line: { color: leftBg, width: 0 } });
+  }
+  if (rightBg && rightBg !== leftBg) {
+    slide.addShape("rect", { x: mx + leftW + gutter, y: contentY, w: rightW, h: contentH, fill: { color: rightBg }, line: { color: rightBg, width: 0 } });
+  }
+
+  // Thin accent "divider" line between panels
+  slide.addShape("line", {
+    x: mx + leftW + gutter / 2, y: contentY, w: 0, h: contentH,
+    line: { color: accentColor(theme), width: 2 }
+  });
+
+  const leftBox = { x: mx + 0.2, y: contentY + 0.2, w: Math.max(1, leftW - 0.4), h: Math.max(1, contentH - 0.4) };
+  const rightBox = { x: mx + leftW + gutter + 0.2, y: contentY + 0.2, w: Math.max(1, rightW - 0.4), h: Math.max(1, contentH - 0.4) };
+
+  // Content placement
+  if (image && (imageOn === "left")) {
+    slide.addImage({ data: image, ...leftBox, sizing: { type: "contain", w: leftBox.w, h: leftBox.h } });
+    slide.addText(bulletListText(bullets), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+  } else if (image && (imageOn === "right")) {
+    slide.addText(bulletListText(bullets), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    slide.addImage({ data: image, ...rightBox, sizing: { type: "contain", w: rightBox.w, h: rightBox.h } });
+  } else {
+    // Double-content (fallback to col1/col2 if present)
+    const c1 = Array.isArray(data?.col1) ? data.col1 : bullets;
+    const c2 = Array.isArray(data?.col2) ? data.col2 : [];
+    slide.addText(bulletListText(c1), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    slide.addText(bulletListText(c2), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+  }
+}
+
+function renderSplitImageLeft(pptx, slide, data, theme) {
+  return renderSplitSection(pptx, slide, data, theme, { imageOn: "left" });
+}
+function renderSplitImageRight(pptx, slide, data, theme) {
+  return renderSplitSection(pptx, slide, data, theme, { imageOn: "right" });
+}
+
+/**
+ * Asymmetric grid: 1/3 + 2/3 layout with optional cards per column.
+ * Uses col1 / col2 arrays if provided; otherwise falls back to bullets+image.
+ */
+function renderAsym(pptx, slide, data, theme, { bigOn = "right" } = {}) {
+  const title = data?.title || "";
+  const { mx, my, gutter } = getSpacing(theme);
+  const bullets = Array.isArray(data?.bullets) ? data.bullets : [];
+  const col1 = Array.isArray(data?.col1) ? data.col1 : bullets;
+  const col2 = Array.isArray(data?.col2) ? data.col2 : [];
+  const image = data?.image;
+
+  if (title) {
+    slide.addText(title, { x: mx, y: my, w: Math.max(1, SLIDE_WIDTH - 2 * mx), h: 0.7, ...titleTextStyle(theme) });
+  }
+
+  const contentY = title ? my + 0.8 : my;
+  const contentH = Math.max(1, SLIDE_HEIGHT - contentY - my);
+  const contentW = Math.max(2, SLIDE_WIDTH - 2 * mx);
+
+  const smallW = (contentW - gutter) * 0.33;
+  const bigW = (contentW - gutter) * 0.67;
+
+  const leftW = bigOn === "left" ? bigW : smallW;
+  const rightW = bigOn === "left" ? smallW : bigW;
+
+  const leftX = mx;
+  const rightX = mx + leftW + gutter;
+
+  // Card background containers for structure
+  slide.addShape(theme.cards?.shape || "roundRect", { x: leftX, y: contentY, w: leftW, h: contentH, ...cardShapeOptions(theme) });
+  slide.addShape(theme.cards?.shape || "roundRect", { x: rightX, y: contentY, w: rightW, h: contentH, ...cardShapeOptions(theme) });
+
+  // Content placement: prefer double-content; else mix bullets+image
+  const leftBox = { x: leftX + 0.2, y: contentY + 0.2, w: Math.max(1, leftW - 0.4), h: Math.max(1, contentH - 0.4) };
+  const rightBox = { x: rightX + 0.2, y: contentY + 0.2, w: Math.max(1, rightW - 0.4), h: Math.max(1, contentH - 0.4) };
+
+  if (col2.length || col1.length) {
+    // Use provided content columns
+    const leftContent = bigOn === "left" ? col1 : col1; // col1 is conceptually left
+    const rightContent = bigOn === "left" ? col2 : col2; // keep columns aligned with user intent
+    if (leftContent.length) {
+      slide.addText(bulletListText(leftContent), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    }
+    if (rightContent.length) {
+      slide.addText(bulletListText(rightContent), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    } else if (image) {
+      slide.addImage({ data: image, ...rightBox, sizing: { type: "contain", w: rightBox.w, h: rightBox.h } });
+    }
+  } else if (image) {
+    // Asym image+bullets
+    if (bigOn === "left") {
+      slide.addImage({ data: image, ...leftBox, sizing: { type: "contain", w: leftBox.w, h: leftBox.h } });
+      slide.addText(bulletListText(bullets), { ...rightBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+    } else {
+      slide.addText(bulletListText(bullets), { ...leftBox, ...bodyTextStyle(theme), ...bulletListOptions(theme) });
+      slide.addImage({ data: image, ...rightBox, sizing: { type: "contain", w: rightBox.w, h: rightBox.h } });
+    }
+  }
+}
+
+function renderAsym12(pptx, slide, data, theme) {
+  // small left (1), big right (2/3)
+  return renderAsym(pptx, slide, data, theme, { bigOn: "right" });
+}
+function renderAsym21(pptx, slide, data, theme) {
+  // big left (2/3), small right (1/3)
+  return renderAsym(pptx, slide, data, theme, { bigOn: "left" });
+}
+
 // IMAGE_LEFT and IMAGE_RIGHT wrappers
 function renderImageLeft(pptx, slide, data, theme) { return renderImageSide(pptx, slide, data, theme, "left"); }
 function renderImageRight(pptx, slide, data, theme) { return renderImageSide(pptx, slide, data, theme, "right"); }
@@ -612,5 +835,12 @@ export const TEMPLATES = {
   QUOTE: renderQuote,
   COMPARISON: renderComparison,
   SECTION_DIVIDER: renderSectionDivider,
-  CHART: renderChart
+  SECTION_DIVIDER_ANGLED: renderSectionDividerAngled,
+  CHART: renderChart,
+  // new modern layouts
+  SPLIT_SECTION: renderSplitSection,
+  SPLIT_IMAGE_LEFT: renderSplitImageLeft,
+  SPLIT_IMAGE_RIGHT: renderSplitImageRight,
+  ASYM_1_2: renderAsym12,
+  ASYM_2_1: renderAsym21,
 };

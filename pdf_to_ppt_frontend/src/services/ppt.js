@@ -101,7 +101,8 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
     fontSize: Math.max(32, (theme.typography?.title?.fontSize || 32))
   });
 
-  for (const s of slides) {
+  for (let i = 0; i < slides.length; i += 1) {
+    const s = slides[i];
     const slide = pptx.addSlide(slideOptionsForTheme(theme));
     applyBackgroundToSlide(slide, theme);
 
@@ -109,10 +110,11 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
     const data = {
       title: s.title || "",
       image: s.imageDataUrl,
-      caption: s.caption || ""
+      caption: s.caption || "",
+      _slideIndex: i, // enable alternating overlays in templates
     };
     // Render using template engine
-    console.log('[ThemeTrace] [generatePptx] Rendering slide with template IMAGE_CARD and theme:', theme?.name, { title: data.title, hasImage: !!data.image, colors: theme?.colors });
+    console.log('[ThemeTrace] [generatePptx] Rendering slide with template IMAGE_CARD and theme:', theme?.name, { title: data.title, hasImage: !!data.image, colors: theme?.colors, idx: i });
     renderSlide(pptx, slide, "IMAGE_CARD", data, theme);
   }
 
@@ -187,7 +189,8 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
   });
   console.log('[ThemeTrace] [generatePptxFromOutline] Title slide applied with theme:', { name: theme?.name, colors: theme?.colors, titleStyle: theme?.typography?.title });
 
-  for (const s of outline.slides) {
+  for (let idx = 0; idx < outline.slides.length; idx += 1) {
+    const s = outline.slides[idx];
     const slide = pptx.addSlide(slideOptionsForTheme(theme));
     applyBackgroundToSlide(slide, theme);
 
@@ -217,11 +220,12 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
       left: s.left,
       right: s.right,
       col1: s.col1,
-      col2: s.col2
+      col2: s.col2,
+      _slideIndex: idx, // enable alternating overlays and dynamic placements
     };
 
-    const templateKey = inferTemplateKey(s, data);
-    console.log('[ThemeTrace] [generatePptxFromOutline] Rendering slide with template:', templateKey, { title: data.title, imagesCount: (data.images || []).length, colors: theme?.colors });
+    const templateKey = inferTemplateKey(s, data, idx);
+    console.log('[ThemeTrace] [generatePptxFromOutline] Rendering slide with template:', templateKey, { title: data.title, imagesCount: (data.images || []).length, colors: theme?.colors, idx });
     renderSlide(pptx, slide, templateKey, data, theme);
 
     // Optional notes
@@ -301,7 +305,7 @@ function pickImages(slideDef, imagesByPage, maxCount = 2) {
   return out;
 }
 
-function inferTemplateKey(slideDef, data) {
+function inferTemplateKey(slideDef, data, index = 0) {
   // Use provided template if present
   if (slideDef?.template) return normalizeTemplateKey(slideDef.template);
 
@@ -311,8 +315,19 @@ function inferTemplateKey(slideDef, data) {
 
   if (slideDef?.flow?.steps?.length) return "FLOWCHART";
   if (slideDef?.left || slideDef?.right) return "COMPARISON";
-  if (slideDef?.col1 || slideDef?.col2) return "TWO_COLUMN";
-  if (hasImage && bulletsLen > 0) return "IMAGE_RIGHT"; // default side
+
+  if (slideDef?.col1 || slideDef?.col2) {
+    // Prefer asymmetric grid when hinted
+    if (slideDef?.layout === "asym-1-2") return "ASYM_1_2";
+    if (slideDef?.layout === "asym-2-1") return "ASYM_2_1";
+    return "TWO_COLUMN";
+  }
+
+  // Dynamic asymmetric placement for image+bullets: alternate sides per slide
+  if (hasImage && bulletsLen > 0) {
+    return (index % 2 === 0) ? "IMAGE_RIGHT" : "IMAGE_LEFT";
+  }
+
   if (hasImage) return "IMAGE_CARD";
   if (!hasImage && bulletsLen > 0 && data.title) return "TITLE_BULLETS";
   if (data.title && !bulletsLen) return "TITLE";
