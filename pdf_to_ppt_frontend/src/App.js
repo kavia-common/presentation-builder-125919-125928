@@ -63,26 +63,75 @@ function App() {
 
   const apiKeyAvailable = !!getOpenAIKey();
 
-  // Auto Accent control
-  // Initialize from URL (?autoAccent=false|0|no|off to disable), but allow runtime toggling via UI
+  // Auto Accent control + Strict Styles (debug/test)
+  // - autoAccent: when true, accent can be auto-derived from images
+  // - strictStyles: when true, forcibly lock styles (autoAccent=false) for fully locked exports
   const [autoAccent, setAutoAccent] = useState(true);
+  const [strictStyles, setStrictStyles] = useState(false);
+
+  // Initialize from URL/localStorage with sensible defaults
+  // Supported URL params:
+  //   ?autoAccent=false|0|no|off           -> disable auto accent
+  //   ?strict=true|1|on|yes|lockedStyles   -> enable strict locked styles (forces autoAccent=false)
   useEffect(() => {
     try {
       const qs = new URLSearchParams(window.location.search);
-      const val = qs.get('autoAccent');
-      if (val == null) {
-        setAutoAccent(true); // default behavior unchanged
+
+      // strictStyles: URL takes precedence, else localStorage, else default false
+      const strictParam = qs.get('strict') ?? qs.get('lockedStyles') ?? qs.get('testMode');
+      let strict = false;
+      if (strictParam != null) {
+        strict = /^(1|true|yes|on|locked|strict)$/i.test(String(strictParam));
       } else {
-        const enabled = !/^(0|false|no|off)$/i.test(String(val));
-        setAutoAccent(enabled);
+        const ls = typeof window !== 'undefined' ? window.localStorage?.getItem('strictStyles') : null;
+        strict = ls === '1';
       }
+
+      // autoAccent: URL takes precedence, else localStorage, else default true
+      const aaParam = qs.get('autoAccent');
+      let aa = true;
+      if (aaParam == null) {
+        const lsAA = typeof window !== 'undefined' ? window.localStorage?.getItem('autoAccent') : null;
+        aa = lsAA == null ? true : lsAA !== '0';
+      } else {
+        aa = !/^(0|false|no|off)$/i.test(String(aaParam));
+      }
+
+      // Apply
+      setStrictStyles(strict);
+      // If strict, force autoAccent=false; otherwise use computed value
+      setAutoAccent(strict ? false : aa);
     } catch {
+      setStrictStyles(false);
       setAutoAccent(true);
     }
   }, []);
+
+  // When strictStyles is enabled, ensure autoAccent is off
   useEffect(() => {
+    if (strictStyles && autoAccent) {
+      setAutoAccent(false);
+    }
+  }, [strictStyles]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist to localStorage and log
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage?.setItem('autoAccent', autoAccent ? '1' : '0');
+      }
+    } catch { /* ignore */ }
     console.log('[ThemeTrace] autoAccent flag (URL/init or UI):', autoAccent, 'URL:', typeof window !== 'undefined' ? window.location.search : '');
   }, [autoAccent]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage?.setItem('strictStyles', strictStyles ? '1' : '0');
+      }
+    } catch { /* ignore */ }
+    console.log('[ThemeTrace] strictStyles flag (debug/test lock):', strictStyles);
+  }, [strictStyles]);
 
   // Busy indicator shared across flows: prevents cross-triggering UI actions.
   const isBusy = analyzing || pptBuilding;
@@ -391,7 +440,7 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
             </div>
           )}
 
-          {/* Options: Polished Mode + Theme + Auto Accent */}
+          {/* Options: Polished Mode + Theme + Strict Styles (debug) + Auto Accent */}
           <div className="options">
             <label className="toggle">
               <input
@@ -418,12 +467,23 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
               </select>
             </div>
 
+            {/* Debug/Test: Strict Styles lock (forces autoAccent=false) */}
+            <label className="toggle" title="Debug: lock theme styles (disable auto accent derivation)">
+              <input
+                type="checkbox"
+                checked={strictStyles}
+                onChange={(e) => setStrictStyles(e.target.checked)}
+                disabled={isBusy}
+              />
+              Strict Styles
+            </label>
+
             <label className="toggle">
               <input
                 type="checkbox"
                 checked={autoAccent}
                 onChange={(e) => setAutoAccent(e.target.checked)}
-                disabled={isBusy}
+                disabled={isBusy || strictStyles}
               />
               Auto Accent
             </label>
@@ -433,7 +493,9 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
                 ? `Using "${themeName}" with template-aware rendering.`
                 : 'Polished Mode off: simple generation is used if no outline.'}
               {' '}
-              {autoAccent ? 'Accent: Auto from images.' : 'Accent: Locked to theme (strict).'}
+              {strictStyles
+                ? 'Strict Styles: ON (auto-accent disabled).'
+                : (autoAccent ? 'Accent: Auto from images.' : 'Accent: Locked to theme (strict).')}
             </div>
           </div>
 
