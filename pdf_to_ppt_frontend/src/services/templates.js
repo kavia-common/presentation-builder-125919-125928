@@ -138,7 +138,8 @@ function renderBullets(_pptx, slide, data, theme) {
 // IMAGE_CARD: Large image centered with caption; optional title on top
 function renderImageCard(_pptx, slide, data, theme) {
   const title = data?.title || "";
-  const image = data?.image; // data URL
+  const image = data?.image; // primary data URL
+  const images = Array.isArray(data?.images) ? data.images.filter(Boolean) : (image ? [image] : []);
   const caption = data?.caption || "";
 
   let y = 0.4;
@@ -147,9 +148,28 @@ function renderImageCard(_pptx, slide, data, theme) {
     y += 0.7;
   }
 
-  if (image) {
+  if (images.length >= 2) {
+    // Mosaic layout: two images side-by-side centered
+    const gutter = 0.3;
+    const totalW = 8.0;
+    const itemW = (totalW - gutter) / 2;
+    const itemH = 4.0;
+    const startX = 1.0;
+
     slide.addImage({
-      data: image,
+      data: images[0],
+      x: startX, y, w: itemW, h: itemH,
+      sizing: { type: "contain", w: itemW, h: itemH }
+    });
+    slide.addImage({
+      data: images[1],
+      x: startX + itemW + gutter, y, w: itemW, h: itemH,
+      sizing: { type: "contain", w: itemW, h: itemH }
+    });
+    y += itemH + 0.2;
+  } else if (images.length === 1) {
+    slide.addImage({
+      data: images[0],
       x: 1.0, y, w: 8.0, h: 4.0,
       sizing: { type: "contain", w: 8.0, h: 4.0 }
     });

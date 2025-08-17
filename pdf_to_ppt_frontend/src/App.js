@@ -231,7 +231,9 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
             imagePages: [s.page]
           }))
         };
-        await generatePptxFromOutline(minimalOutline, imagesByPage, 'Generated Presentation');
+        // Build page metadata for captions from analysis
+        const pageMeta = Object.fromEntries(analysis.map(a => [a.page, { title: a.title || "", caption: a.caption || "" }]));
+        await generatePptxFromOutline(minimalOutline, imagesByPage, 'Generated Presentation', { themeName, pageMeta });
         lastBuildSlidesRef.current = minimalOutline.slides || [];
         setPptReady(true);
         setOutline(prev => prev && prev.slides?.length ? prev : minimalOutline);
@@ -272,7 +274,8 @@ Set a top-level "theme":"${themeName}" field in the JSON output.`
       const imagesByPage = Object.fromEntries(pageImages.map(p => [p.page, p.dataUrl]));
 
       // PUBLIC_INTERFACE
-      await generatePptxFromOutline(refined, imagesByPage, 'Generated Presentation');
+      const pageMeta = Object.fromEntries(analysis.map(a => [a.page, { title: a.title || "", caption: a.caption || "" }]));
+      await generatePptxFromOutline(refined, imagesByPage, 'Generated Presentation', { themeName, pageMeta });
       lastBuildSlidesRef.current = refined?.slides || [];
       setPptReady(true);
 

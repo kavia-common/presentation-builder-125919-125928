@@ -109,13 +109,21 @@ export async function generatePptx(slides, fileNameTitle = "Presentation", optio
  * @param {string} fileNameTitle
  * @returns {Promise<void>}
  */
-export async function generatePptxFromOutline(outline, imagesByPage, fileNameTitle = "Presentation") {
+export async function generatePptxFromOutline(outline, imagesByPage, fileNameTitle = "Presentation", options = {}) {
+  /**
+   * options:
+   *  - themeName?: string           // Enforce selected theme regardless of outline.theme
+   *  - pageMeta?: Record<number,{ title?: string, caption?: string }>
+   */
   if (!outline || !Array.isArray(outline.slides) || outline.slides.length === 0) {
     throw new Error("Outline is empty. Nothing to generate.");
   }
 
-  const themeName = outline.theme || "azure";
-  const baseTheme = getTheme(themeName);
+  // Enforce selected theme (override outline.theme) if provided
+  const enforcedThemeName = options?.themeName ? String(options.themeName) : (outline.theme || "azure");
+  const baseTheme = getTheme(enforcedThemeName);
+
+  // Use first available image per slide to derive accent
   const candidateImages = (Array.isArray(outline.slides) ? outline.slides.map(s => pickFirstImage(s, imagesByPage)).filter(Boolean) : []);
   const theme = await deriveThemeWithAutoAccent(baseTheme, candidateImages);
   const pptx = new PptxGenJS();
@@ -133,8 +141,19 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
   for (const s of outline.slides) {
     const slide = pptx.addSlide(slideOptionsForTheme(theme));
 
-    // Determine images (prefer first listed page)
-    const primaryImage = pickFirstImage(s, imagesByPage);
+    // Determine images: prefer slide.imagePages, fallback to slide.sources[].page
+    const images = pickImages(s, imagesByPage, 2);
+    const primaryImage = images.length ? images[0] : null;
+
+    // Caption fallback: if slide.caption absent, try first page's meta caption
+    let caption = s.caption || "";
+    if (!caption && Array.isArray(s.imagePages) && s.imagePages.length && options?.pageMeta) {
+      const firstPage = s.imagePages.find((p) => options.pageMeta[p]?.caption);
+      if (firstPage) caption = options.pageMeta[firstPage].caption || "";
+    } else if (!caption && Array.isArray(s.sources) && s.sources.length && options?.pageMeta) {
+      const firstSourcePage = (s.sources.map(src => src?.page).filter(Boolean) || []).find((p) => options.pageMeta[p]?.caption);
+      if (firstSourcePage) caption = options.pageMeta[firstSourcePage].caption || "";
+    }
 
     // Normalize data for templates
     const data = {
@@ -142,7 +161,8 @@ export async function generatePptxFromOutline(outline, imagesByPage, fileNameTit
       subtitle: s.subtitle || "",
       bullets: Array.isArray(s.bullets) ? s.bullets : [],
       image: primaryImage,
-      caption: s.caption || "",
+      images, // pass all selected images for templates capable of mosaics
+      caption: caption || "",
       flow: s.flow,
       left: s.left,
       right: s.right,
@@ -186,7 +206,48 @@ function pickFirstImage(slideDef, imagesByPage) {
   for (const p of pages) {
     if (imagesByPage && imagesByPage[p]) return imagesByPage[p];
   }
+  // Fallback to sources[].page
+  const srcPages = Array.isArray(slideDef.sources) ? slideDef.sources.map(s => s?.page).filter(Boolean) : [];
+  for (const p of srcPages) {
+    if (imagesByPage && imagesByPage[p]) return imagesByPage[p];
+  }
   return null;
+}
+
+/**
+ * Pick up to maxCount images for a slide. Prefers imagePages then falls back to sources[].page.
+ * @param {object} slideDef
+ * @param {Record<number,string>} imagesByPage
+ * @param {number} maxCount
+ * @returns {string[]} dataUrls
+ */
+function pickImages(slideDef, imagesByPage, maxCount = 2) {
+  const out = [];
+  if (!slideDef || !imagesByPage) return out;
+
+  const seen = new Set();
+  const pushIf = (url) => {
+    if (!url) return;
+    if (seen.has(url)) return;
+    out.push(url);
+    seen.add(url);
+  };
+
+  const pageList = Array.isArray(slideDef.imagePages) ? slideDef.imagePages : [];
+  for (const p of pageList) {
+    if (imagesByPage[p]) {
+      pushIf(imagesByPage[p]);
+      if (out.length >= maxCount) return out;
+    }
+  }
+  const srcPages = Array.isArray(slideDef.sources) ? slideDef.sources.map(s => s?.page).filter(Boolean) : [];
+  for (const p of srcPages) {
+    if (imagesByPage[p]) {
+      pushIf(imagesByPage[p]);
+      if (out.length >= maxCount) return out;
+    }
+  }
+  return out;
 }
 
 function inferTemplateKey(slideDef, data) {
