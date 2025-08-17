@@ -96,7 +96,12 @@ export default function ThemePreview({ name = "azure", polished = false }) {
         </div>
 
         {/* Accent divider */}
-        <div className="theme-preview-divider" style={{ background: h(getAccentColor(theme)) }} />
+        <div
+          className="theme-preview-divider"
+          role="separator"
+          aria-label="Theme accent divider"
+          style={{ background: h(getAccentColor(theme)) }}
+        />
 
         {/* Sample content row: card + tokens */}
         <div className="theme-preview-row">
