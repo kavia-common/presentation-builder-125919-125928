@@ -370,15 +370,21 @@ export function getThemeInfo(name = "azure") {
   };
 }
 
-// PUBLIC_INTERFACE
+/** 
+ * PUBLIC_INTERFACE
+ */
 export function slideOptionsForTheme(theme) {
   /**
    * Returns slide creation options for pptx.addSlide, such as background color.
+   * Some consumers/mocks read "bkgd" while others may read "background",
+   * so we set both for compatibility.
    * @param {object} theme - theme object from getTheme()
-   * @returns {{ bkgd?: string }}
+   * @returns {{ bkgd?: string, background?: string }}
    */
+  const bg = theme?.colors?.background || "FFFFFF";
   return {
-    bkgd: theme?.colors?.background || "FFFFFF"
+    bkgd: bg,
+    background: bg
   };
 }
 

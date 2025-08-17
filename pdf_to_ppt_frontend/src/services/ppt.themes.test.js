@@ -85,6 +85,7 @@ describe("PPT export theme application", () => {
     cap.slides.forEach((s) => {
       expect(s.opts).toBeDefined();
       expect(s.opts.bkgd).toBe(theme.colors.background);
+      expect(s.opts.background).toBe(theme.colors.background);
     });
 
     // Title text style color applied on title slide addText options
@@ -120,6 +121,7 @@ describe("PPT export theme application", () => {
       expect(cap.slides.length).toBeGreaterThanOrEqual(2);
       cap.slides.forEach((s) => {
         expect(s.opts.bkgd).toBe(theme.colors.background);
+        expect(s.opts.background).toBe(theme.colors.background);
       });
     }
   });
