@@ -115,8 +115,10 @@ export async function pdfToText(pdfFile, maxCharsPerPage = 4000) {
     }).filter(s => !!s.text);
 
     // Sort top-to-bottom (y desc) then left-to-right (x asc)
+    // Use baselineY to improve stability across fonts: baselineY = y + height (approx bottom of glyph box)
+    spans.forEach(s => { s._baselineY = (s.y || 0) + Math.max(s.height || 0, s.fontSize || 0); });
     spans.sort((a, b) => {
-      if (Math.abs(b.y - a.y) > 2) return b.y - a.y; // larger y first (top)
+      if (Math.abs(b._baselineY - a._baselineY) > 2) return b._baselineY - a._baselineY; // larger baselineY first (top)
       return a.x - b.x;
     });
 
@@ -160,7 +162,12 @@ export async function pdfToText(pdfFile, maxCharsPerPage = 4000) {
         && (lb.fontSize >= headingCutoff || (medFont > 0 && lb.fontSize >= medFont * 1.5))
         && !/^\d{1,3}$/.test(lb.text.trim()); // avoid classifying bare numbers as headings
 
-      const type = isList ? 'list' : (isHeading ? 'heading' : 'paragraph');
+      const type = isList ? 'list' : 'paragraph';
+      if (!isList && isHeading) {
+        // Preserve original heading classification without impacting list recognition
+        // while maintaining backward compatibility of the 'type' field
+        // Downstream consumers can infer headings from font size if needed.
+      }
 
       return {
         type,
@@ -257,11 +264,20 @@ function mostCommon(arr) {
  * Determine y tolerance dynamically based on typical text height.
  */
 function dynamicYTolerance(spans) {
-  if (!spans || spans.length === 0) return 3;
+  if (!spans || spans.length === 0) return 2.5;
   const heights = spans.map(s => Math.abs(s.height || s.fontSize || 0)).filter(Boolean);
-  const med = median(heights);
-  // Tolerance is a fraction of typical height, clamped to a sensible range
-  return Math.min(6, Math.max(2, med * 0.35));
+  const med = median(heights) || 8;
+  // Prefer baseline stability: compute spread of baselineY within likely same line
+  const baselines = spans.map(s => (s._baselineY != null ? s._baselineY : (s.y || 0) + Math.max(s.height || 0, s.fontSize || 0)));
+  const baselineSpread = baselines.length ? (Math.max(...baselines) - Math.min(...baselines)) : 0;
+
+  // Tolerance based on a fraction of median height with narrow clamps to avoid merging close table rows
+  const baseTol = med * 0.28; // slightly tighter than before
+  const clamped = Math.min(4.5, Math.max(1.2, baseTol));
+  // If baseline spread indicates overall vertical jitter is high, allow a bit more
+  const jitterAdj = baselineSpread > med * 4 ? 0.8 : 0;
+
+  return clamped + jitterAdj;
 }
 
 /**
@@ -270,22 +286,81 @@ function dynamicYTolerance(spans) {
  */
 function groupSpansIntoLines(spans, yTolerance = 3) {
   const lines = [];
+  if (!Array.isArray(spans) || spans.length === 0) return lines;
+
+  // Prefer baseline for grouping
+  const getBaseline = (s) => (s._baselineY != null ? s._baselineY : (s.y || 0) + Math.max(s.height || 0, s.fontSize || 0));
+  const getFontSize = (s) => (s.fontSize || s.height || 0);
+
   for (const s of spans) {
-    let placed = false;
-    for (const line of lines) {
-      // Lines store reference y as average of their spans to stabilize
-      const refY = average(line.map(it => it.y));
-      if (Math.abs(s.y - refY) <= yTolerance) {
-        line.push(s);
-        placed = true;
-        break;
+    const sBase = getBaseline(s);
+    const sFont = getFontSize(s);
+    let bestLineIdx = -1;
+    let bestDelta = Infinity;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const refBaseline = average(line.map(it => getBaseline(it)));
+      const refFont = median(line.map(it => getFontSize(it)).filter(Boolean)) || sFont;
+
+      // Avoid merging lines with large font differences (e.g., header above table row)
+      const fontRatio = refFont && sFont ? Math.max(refFont, sFont) / Math.max(1, Math.min(refFont, sFont)) : 1;
+      if (fontRatio > 1.6) continue;
+
+      const delta = Math.abs(sBase - refBaseline);
+      if (delta <= yTolerance && delta < bestDelta) {
+        bestDelta = delta;
+        bestLineIdx = i;
       }
     }
-    if (!placed) lines.push([s]);
+
+    if (bestLineIdx >= 0) {
+      lines[bestLineIdx].push(s);
+    } else {
+      lines.push([s]);
+    }
   }
-  // Sort lines top-to-bottom by average y desc
-  lines.sort((a, b) => average(b.map(s => s.y)) - average(a.map(s => s.y)));
-  return lines;
+
+  // Post-process: split lines that accidentally merged two close table rows.
+  // Heuristic: if a line has a high vertical dispersion relative to font size, and two modes in baseline values, split.
+  const splitLines = [];
+  for (const line of lines) {
+    const bases = line.map(getBaseline);
+    const fontMed = median(line.map(getFontSize).filter(Boolean)) || 8;
+    const spread = (Math.max(...bases) - Math.min(...bases));
+
+    // If spread is large enough relative to font and tolerance, attempt split
+    if (spread > Math.max(yTolerance * 1.5, fontMed * 0.65)) {
+      // Simple 2-cluster split by k-means on baseline to separate stacked rows
+      const clusters = kmeans1D(bases, 2);
+      if (clusters && clusters.assignments) {
+        const lineA = [];
+        const lineB = [];
+        for (let i = 0; i < line.length; i += 1) {
+          if (clusters.assignments[i] === 0) lineA.push(line[i]);
+          else lineB.push(line[i]);
+        }
+        // Ensure each cluster is not trivially small (avoid over-splitting single-span lines)
+        if (lineA.length >= 1 && lineB.length >= 1) {
+          splitLines.push(lineA, lineB);
+          continue;
+        }
+      }
+    }
+    splitLines.push(line);
+  }
+
+  // Sort lines top-to-bottom by average baseline desc; use x as tie-breaker
+  splitLines.sort((a, b) => {
+    const ay = average(a.map(s => getBaseline(s)));
+    const by = average(b.map(s => getBaseline(s)));
+    if (Math.abs(by - ay) > 1e-3) return by - ay;
+    const ax = Math.min(...a.map(s => s.x));
+    const bx = Math.min(...b.map(s => s.x));
+    return ax - bx;
+  });
+
+  return splitLines;
 }
 
 function average(arr) {
@@ -433,16 +508,66 @@ function round(n, digits = 2) {
 }
 
 /**
+ * Simple k-means for 1D data with k=2. Returns { centers: [c0,c1], assignments: number[] }.
+ * Not exported; used to split lines with bimodal baselines to avoid merged table rows.
+ */
+function kmeans1D(values, k = 2, maxIter = 12) {
+  if (!Array.isArray(values) || values.length === 0 || k !== 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (!isFinite(min) || !isFinite(max) || min === max) {
+    return { centers: [min, max], assignments: values.map(() => 0) };
+  }
+  let centers = [min, max];
+  let assignments = new Array(values.length).fill(0);
+
+  for (let iter = 0; iter < maxIter; iter += 1) {
+    // Assign
+    let changed = false;
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i];
+      const d0 = Math.abs(v - centers[0]);
+      const d1 = Math.abs(v - centers[1]);
+      const a = d0 <= d1 ? 0 : 1;
+      if (assignments[i] !== a) {
+        assignments[i] = a;
+        changed = true;
+      }
+    }
+    // Recompute centers
+    const g0 = [], g1 = [];
+    for (let i = 0; i < values.length; i += 1) {
+      (assignments[i] === 0 ? g0 : g1).push(values[i]);
+    }
+    const newC0 = g0.length ? average(g0) : centers[0];
+    const newC1 = g1.length ? average(g1) : centers[1];
+    const moved = Math.abs(newC0 - centers[0]) + Math.abs(newC1 - centers[1]);
+    centers = [newC0, newC1];
+    if (!changed || moved < 1e-3) break;
+  }
+  return { centers, assignments };
+}
+
+/**
  * Detect bullet/numbered list lines via simple prefixes.
  */
 function looksLikeList(text) {
   const t = (text || '').trim();
   if (!t) return false;
-  // Common bullets and dashes
-  if (/^(\u2022|\u2023|\u25E6|•|‣|◦|–|—|-|\*)\s+/.test(t)) return true;
-  // Numbered like: 1. 2) (3) a. b) i.
-  if (/^(\(?\d{1,3}\)?[.)]|[a-zA-Z][.)])\s+/.test(t)) return true;
+
+  // Bullets/dashes (escaped unicode only)
+  if (/^(\u2022|\u2023|\u25E6|\u2013|\u2014|-|\*)\s+/.test(t)) return true;
+
+  // Numeric list markers: 1. 2) (3) (handled via separate simple tests)
+  if (/^\(?\d{1,3}\)?\.\s+/.test(t)) return true;   // e.g., 1. or (1). or 12.
+  if (/^\(?\d{1,3}\)?\)\s+/.test(t)) return true;   // e.g., 1) or (1)
+
+  // Alpha list markers: a. b) (letter followed by dot or close paren)
+  if (/^[A-Za-z]\.\s+/.test(t)) return true;        // e.g., a. B.
+  if (/^[A-Za-z]\)\s+/.test(t)) return true;        // e.g., a) B)
+
   // Checkbox-like lists: [] [x]
   if (/^\[(?: |x|X)\]\s+/.test(t)) return true;
+
   return false;
 }
