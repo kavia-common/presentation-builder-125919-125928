@@ -184,8 +184,26 @@ export async function pdfToText(pdfFile, maxCharsPerPage = 4000) {
       };
     });
 
-    // Build raw text (top-to-bottom). Keep newlines between lines
-    const raw = lineBlocks.map(lb => lb.text).join('\n').replace(/\s+\n/g, '\n').trim();
+    // Column detection and reading order:
+    // - Use lineBlocks bboxes and span positions to infer columns via x midpoint clustering.
+    // - Read columns left-to-right; within each, sort top-to-bottom.
+    const pageWidth = estimatePageWidth(spans);
+    const columns = detectColumns(lineBlocks, { pageWidth });
+
+    let orderedLineBlocks;
+    if (columns.length > 1) {
+      // Multi-column: flatten by columns (already sorted L->R and T->B within)
+      orderedLineBlocks = columns.flatMap(col => col.lines);
+    } else {
+      // Single column fallback: original top-to-bottom order
+      orderedLineBlocks = lineBlocks.slice().sort((a, b) => {
+        if (Math.abs(b.bbox.y - a.bbox.y) > 2) return b.bbox.y - a.bbox.y;
+        return a.bbox.x - b.bbox.x;
+      });
+    }
+
+    // Build raw text in detected reading order. Keep newlines between lines; add blank line between columns sections rarely needed after flatten.
+    const raw = orderedLineBlocks.map(lb => lb.text).join('\n').replace(/\s+\n/g, '\n').trim();
     const normalized = raw.replace(/\s+\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
     const truncated = normalized.slice(0, Math.max(0, maxCharsPerPage));
 
@@ -197,6 +215,8 @@ export async function pdfToText(pdfFile, maxCharsPerPage = 4000) {
         maxFont: round(maxFont, 2),
         medianFont: round(medFont, 2),
         lineCount: lineBlocks.length,
+        columns: columns.length,
+        columnBoundaries: columns.map(c => ({ x: round(c.x, 2), w: round(c.w, 2), lines: c.lines.length })),
       }
     });
   }
@@ -296,6 +316,100 @@ function joinLineText(lineSpans) {
   return parts.join('').replace(/\s+/g, ' ').trim();
 }
 
+function estimatePageWidth(spans) {
+  // Use max (x + width) from spans as approximate page width in PDF units
+  if (!spans || spans.length === 0) return 0;
+  return Math.max(...spans.map(s => (s.x || 0) + (s.width || 0)));
+}
+
+/**
+ * Detect columns from line blocks by clustering their horizontal centers (x midpoints).
+ * Returns an array of columns: [{ x, w, lines: lineBlocksSortedTopToBottom }]
+ * Heuristics:
+ *  - Compute each line's xMid and width; attempt to form clusters where gaps between cluster centers exceed a dynamic gutter threshold.
+ *  - Gutter threshold ~ min(0.12 * pageWidth, 0.8 * medianLineWidth)
+ *  - Merge tiny clusters if they overlap heavily.
+ */
+function detectColumns(lineBlocks, { pageWidth = 0 } = {}) {
+  const lines = Array.isArray(lineBlocks) ? lineBlocks.slice() : [];
+  if (lines.length <= 1) return [{ x: 0, w: pageWidth || 0, lines: lines.sort((a, b) => (b.bbox?.y || 0) - (a.bbox?.y || 0)) }];
+
+  // Precompute xMid and width
+  const enriched = lines.map(lb => {
+    const x = lb?.bbox?.x || 0;
+    const w = lb?.bbox?.width || 0;
+    const y = lb?.bbox?.y || 0;
+    const xMid = x + w / 2;
+    return { ...lb, _xMid: xMid, _w: w, _y: y, _x: x };
+  }).filter(Boolean);
+
+  const medianWidth = median(enriched.map(e => e._w).filter(Boolean)) || 0;
+  const gutterThreshold = Math.max(12, Math.min(pageWidth * 0.12 || 9999, medianWidth * 0.8 || 9999));
+
+  // Sort by xMid to identify clusters left->right
+  enriched.sort((a, b) => a._xMid - b._xMid);
+
+  // First-pass clustering by gaps between xMid
+  const clusters = [];
+  let current = [];
+  for (let i = 0; i < enriched.length; i += 1) {
+    const item = enriched[i];
+    if (current.length === 0) {
+      current.push(item);
+      continue;
+    }
+    const prev = current[current.length - 1];
+    const gap = item._xMid - prev._xMid;
+    if (gap > gutterThreshold) {
+      clusters.push(current);
+      current = [item];
+    } else {
+      current.push(item);
+    }
+  }
+  if (current.length) clusters.push(current);
+
+  // If only one cluster, return single column
+  if (clusters.length <= 1) {
+    const sorted = enriched.slice().sort((a, b) => (b._y - a._y) || (a._x - b._x));
+    const minX = Math.min(...sorted.map(e => e._x));
+    const maxX = Math.max(...sorted.map(e => e._x + e._w));
+    return [{ x: minX, w: maxX - minX, lines: sorted }];
+  }
+
+  // Compute column x,w and sort lines top->bottom
+  const columns = clusters.map(group => {
+    const sorted = group.slice().sort((a, b) => (b._y - a._y) || (a._x - b._x));
+    const minX = Math.min(...group.map(e => e._x));
+    const maxX = Math.max(...group.map(e => e._x + e._w));
+    return { x: minX, w: maxX - minX, lines: sorted };
+  });
+
+  // Sort columns left->right
+  columns.sort((a, b) => a.x - b.x);
+
+  // Merge very narrow columns that likely belong to neighbors (e.g., side numbers)
+  const merged = [];
+  for (let i = 0; i < columns.length; i += 1) {
+    const col = columns[i];
+    const isNarrow = col.w < Math.max(40, (pageWidth || 0) * 0.08);
+    if (isNarrow && merged.length) {
+      // Attach to the previous column if overlap in y exists
+      const prev = merged[merged.length - 1];
+      prev.lines = prev.lines.concat(col.lines).sort((a, b) => (b._y - a._y) || (a._x - b._x));
+      prev.x = Math.min(prev.x, col.x);
+      prev.w = Math.max(prev.w, (col.x + col.w) - prev.x);
+    } else {
+      merged.push(col);
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Compute an approximate bounding box for a set of spans.
+ */
 function computeBBox(spans) {
   if (!spans || spans.length === 0) {
     return { x: 0, y: 0, width: 0, height: 0 };
